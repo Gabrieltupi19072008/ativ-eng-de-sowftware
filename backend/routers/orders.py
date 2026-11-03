@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 import config
@@ -12,7 +13,7 @@ from database import get_db
 from deps import current_user
 from errors import ApiError
 from models import Cliente, Endereco, Estoque, ItemPedido, Pagamento, Pedido, Produto
-from orders_service import cancel_waiting_order, expire_orders, mark_paid
+from orders_service import can_fulfil, cancel_waiting_order, expire_orders, mark_delivered, mark_paid, mark_shipped, order_artist_ids
 from serializers import PAYMENT_IN, order_view
 
 router = APIRouter(tags=["orders"])
@@ -47,6 +48,7 @@ def _load(db: Session, order_id: int) -> Pedido | None:
             selectinload(Pedido.itens).joinedload(ItemPedido.produto).joinedload(Produto.artista),
             joinedload(Pedido.endereco),
             joinedload(Pedido.pagamento),
+            joinedload(Pedido.entrega),
         )
         .where(Pedido.id_pedido == order_id)
         .execution_options(populate_existing=True)
@@ -168,6 +170,52 @@ def cancel_order(order_id: int, user: Cliente = Depends(current_user), db: Sessi
         raise ApiError(409, "Este pedido não pode mais ser cancelado.")
     db.commit()
     return {"ok": True, "message": "Pedido cancelado. As obras voltaram para a vitrine.", "order": _view(_load(db, order_id))}
+
+
+class ShipIn(BaseModel):
+    trackingCode: str = Field(max_length=60)
+    carrier: str = Field(default="Correios", max_length=100)
+
+
+def _fulfiller_order(db: Session, order_id: int, user: Cliente) -> Pedido:
+    order = _load(db, order_id)
+    # 404 (e não 403) para não revelar pedidos de outras pessoas
+    if not order or not can_fulfil(user, order_artist_ids(db, order_id)):
+        raise ApiError(404, "Pedido não encontrado.")
+    return order
+
+
+@router.post("/orders/{order_id}/ship")
+def ship_order(order_id: int, body: ShipIn, user: Cliente = Depends(current_user), db: Session = Depends(get_db)):
+    """O artista (ou o administrador) informa o código de rastreio e o pedido pago passa a 'enviado'."""
+    expire_orders(db)
+    _fulfiller_order(db, order_id, user)
+    code = body.trackingCode.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]{5,60}", code):
+        raise ApiError(400, "Informe um código de rastreio válido (5 a 60 letras e números, sem espaços).", "trackingCode")
+    carrier = body.carrier.strip() or "Correios"
+    try:
+        shipped = mark_shipped(db, order_id, code, carrier)
+        if shipped:
+            db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError(409, "Este código de rastreio já foi usado em outro pedido.", "trackingCode")
+    if not shipped:
+        db.rollback()
+        raise ApiError(409, "Só é possível enviar um pedido que já foi pago e ainda não foi enviado.")
+    return {"ok": True, "message": "Pedido marcado como enviado.", "order": _view(_load(db, order_id))}
+
+
+@router.post("/orders/{order_id}/deliver")
+def deliver_order(order_id: int, user: Cliente = Depends(current_user), db: Session = Depends(get_db)):
+    expire_orders(db)
+    _fulfiller_order(db, order_id, user)
+    if not mark_delivered(db, order_id):
+        db.rollback()
+        raise ApiError(409, "Só é possível marcar como entregue um pedido que já foi enviado.")
+    db.commit()
+    return {"ok": True, "message": "Pedido marcado como entregue.", "order": _view(_load(db, order_id))}
 
 
 @router.post("/orders/{order_id}/simulate-payment")

@@ -87,6 +87,18 @@ PAYMENT_IN = {"pix": "PIX", "boleto": "BOLETO", "credit": "CARTAO"}
 PAYMENT_STATUS_OUT = {"PENDENTE": "pending", "APROVADO": "approved", "RECUSADO": "declined", "ESTORNADO": "refunded"}
 
 
+def shipment_view(o: Pedido) -> dict | None:
+    e = o.entrega
+    if not e:
+        return None
+    return {
+        "trackingCode": e.codigo_rastreio or "",
+        "carrier": e.transportadora or "",
+        "shippedAt": e.data_envio.isoformat() if e.data_envio else None,
+        "deliveredAt": e.data_entrega.isoformat() if e.data_entrega else None,
+    }
+
+
 def order_view(o: Pedido, fake_payments: bool = False) -> dict:
     subtotal = sum(float(i.preco_unitario) * i.quantidade for i in o.itens)
     waiting = o.status == "AGUARDANDO"
@@ -117,6 +129,7 @@ def order_view(o: Pedido, fake_payments: bool = False) -> dict:
             "cep": address.cep, "street": address.logradouro, "number": address.numero, "complement": address.complemento or "",
             "neighborhood": address.bairro, "city": address.cidade, "state": address.estado,
         },
+        "shipment": shipment_view(o),
         "canCancel": waiting,
         "canSimulatePayment": waiting and fake_payments,
     }

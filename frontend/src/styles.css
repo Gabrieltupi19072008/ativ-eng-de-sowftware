@@ -703,3 +703,13 @@ img { object-fit: cover; }
 .theme-dark .sales-summary > div { background: #151515; border-color: #2a2a2a; }
 .theme-dark .top-artists li { border-color: #2a2a2a; }
 @media (max-width: 720px) { .sales-summary { grid-template-columns: 1fr; } }
+
+/* envio e rastreio */
+.shipment-info { margin: 0; padding: .8rem 1.2rem; border-top: 1px solid var(--line); font-size: .74rem; color: var(--muted); }
+.shipment-info strong, .shipment-info b { color: var(--ink); }
+.shipment-controls { display: grid; gap: .9rem; padding: 1rem 1.2rem; border-top: 1px solid var(--line); background: var(--paper); }
+.shipment-controls form { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; }
+.shipment-controls .field { flex: 1 1 220px; margin: 0; }
+.ship-to { margin: 0; font-size: .74rem; line-height: 1.5; }
+.theme-dark .shipment-controls { background: #101010; border-color: #2a2a2a; }
+.theme-dark .shipment-info { border-color: #2a2a2a; }

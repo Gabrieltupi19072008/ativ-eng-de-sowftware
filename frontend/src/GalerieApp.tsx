@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { cancelOrderAction, createArtworkAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+import { cancelOrderAction, createArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
 
 export type Address = {
   cep: string
@@ -40,6 +40,8 @@ export type ArtworkView = {
 export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled'
 export type PaymentMethod = 'pix' | 'boleto' | 'credit'
 
+export type Shipment = { trackingCode: string; carrier: string; shippedAt: string | null; deliveredAt: string | null }
+
 export type OrderView = {
   id: string
   number: string
@@ -54,6 +56,7 @@ export type OrderView = {
   paymentStatus: string | null
   items: { artworkId: string; title: string; artistName: string; price: number; image: string }[]
   address: Address
+  shipment?: Shipment | null
   canCancel: boolean
   canSimulatePayment: boolean
 }
@@ -71,9 +74,13 @@ export type SaleView = {
   buyerName: string
   buyerCity: string
   buyerState: string
+  shipment: Shipment | null
+  canShip: boolean
+  canDeliver: boolean
+  shippingAddress: Address | null
 }
 
-export type AdminOrderView = OrderView & { buyerName: string; buyerEmail: string }
+export type AdminOrderView = OrderView & { buyerName: string; buyerEmail: string; canShip: boolean; canDeliver: boolean }
 
 export type ReportsView = {
   revenue: number
@@ -549,6 +556,8 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
           <header><div><strong>Pedido {order.number}</strong><span>{dateTime(order.createdAt)} · {order.buyerName} ({order.buyerEmail})</span></div><em className={`order-status status-${order.status}`}>{orderStatusLabel[order.status]}</em></header>
           <div className="order-items">{order.items.map((item) => <div key={item.artworkId}><div className="order-thumb"><Image src={item.image} alt={item.title} fill sizes="64px" /></div><p><strong>{item.title}</strong><span>{item.artistName}</span></p><b>{currency(item.price)}</b></div>)}</div>
           <dl className="order-info"><div><dt>Pagamento</dt><dd>{order.paymentMethod ? paymentMethodLabel[order.paymentMethod] : '—'}</dd></div><div><dt>Entrega</dt><dd>{order.address.street}, {order.address.number} · {order.address.city}/{order.address.state}</dd></div><div><dt>Total</dt><dd><strong>{currency(order.total)}</strong></dd></div></dl>
+          {order.shipment && <ShipmentInfo shipment={order.shipment} />}
+          <ShipmentControls orderId={order.id} canShip={order.canShip} canDeliver={order.canDeliver} address={order.address} recipient={order.buyerName} done={() => void loadData()} />
         </article>)}</div> : <div className="account-empty"><span><Icon name="bag" size={25} /></span><h3>Nenhum pedido ainda</h3><p>Quando alguém comprar uma obra, o pedido aparece aqui.</p></div>)}
       </section>}
       {tab === 'reports' && <section className="reports-layout">{dataFailed ? <DataError retry={() => void loadData()} /> : !reports ? <p>Carregando…</p> : <>
@@ -627,12 +636,46 @@ function OrdersPanel({ back, onChange }: { back: () => void; onChange?: () => vo
         <div><dt>Entrega</dt><dd>{order.address.street}, {order.address.number} · {order.address.city}/{order.address.state}</dd></div>
         <div><dt>Total</dt><dd><strong>{currency(order.total)}</strong></dd></div>
       </dl>
+      {order.shipment && <ShipmentInfo shipment={order.shipment} />}
       {order.status === 'pending' && order.expiresAt && <p className="order-deadline">Reservado até {dateTime(order.expiresAt)}. Depois disso o pedido é cancelado e a obra volta à vitrine.</p>}
       {(order.canSimulatePayment || order.canCancel) && <div className="order-actions">
         {order.canSimulatePayment && <Button kind="gold" disabled={busy === order.id} onClick={() => void act(order.id, simulatePaymentAction)}>Simular pagamento (teste)</Button>}
         {order.canCancel && <Button kind="outline" disabled={busy === order.id} onClick={() => { if (window.confirm('Cancelar este pedido? As obras voltam para a vitrine.')) void act(order.id, cancelOrderAction) }}>Cancelar pedido</Button>}
       </div>}
     </article>)}</div></>
+}
+
+function ShipmentInfo({ shipment }: { shipment: Shipment }) {
+  const date = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR')
+  return <p className="shipment-info"><strong>{shipment.carrier || 'Transportadora'}</strong> · rastreio <b>{shipment.trackingCode}</b>{shipment.shippedAt && <> · enviado em {date(shipment.shippedAt)}</>}{shipment.deliveredAt && <> · entregue em {date(shipment.deliveredAt)}</>}</p>
+}
+
+// Marcar envio (com código de rastreio) e entrega. Usado pelo artista (Minhas vendas) e pelo administrador (Pedidos).
+function ShipmentControls({ orderId, canShip, canDeliver, address, recipient, done }: { orderId: string; canShip: boolean; canDeliver: boolean; address?: Address | null; recipient?: string; done: () => void }) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+
+  async function act(request: () => Promise<ActionResult>) {
+    setBusy(true)
+    const result = await request()
+    setNotice({ text: result.message, error: !result.ok })
+    setBusy(false)
+    if (result.ok) done()
+  }
+
+  if (!canShip && !canDeliver) return null
+  return <div className="shipment-controls">
+    {canShip && <>
+      {address && <p className="ship-to"><strong>Enviar para{recipient ? ` ${recipient}` : ''}:</strong> {address.street}, {address.number}{address.complement ? ` – ${address.complement}` : ''} · {address.neighborhood} · {address.city}/{address.state} · CEP {address.cep}</p>}
+      <form onSubmit={(event) => { event.preventDefault(); void act(() => shipOrderAction(orderId, code)) }}>
+        <label className="field"><span>Código de rastreio (Correios)</span><input value={code} onChange={(event) => setCode(event.target.value)} placeholder="Ex.: AA123456789BR" maxLength={60} required /></label>
+        <Button type="submit" kind="gold" disabled={busy}>Marcar como enviado</Button>
+      </form>
+    </>}
+    {canDeliver && <Button kind="gold" disabled={busy} onClick={() => void act(() => deliverOrderAction(orderId))}>Marcar como entregue</Button>}
+    {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+  </div>
 }
 
 function DataError({ retry }: { retry: () => void }) {
@@ -663,9 +706,11 @@ function SalesPanel() {
 
   return <><h2>Minhas vendas</h2><p>Acompanhe as obras que já foram compradas.</p>
     <div className="sales-summary"><div><span>Obras vendidas</span><strong>{paid.length}</strong></div><div><span>Total vendido</span><strong>{currency(total)}</strong></div><div><span>Aguardando pagamento</span><strong>{sales.length - paid.length}</strong></div></div>
-    <div className="orders-list">{sales.map((sale) => <article className="order-card" key={`${sale.orderId}-${sale.artworkId}`}>
+    <div className="orders-list">{sales.map((sale, index) => <article className="order-card" key={`${sale.orderId}-${sale.artworkId}`}>
       <header><div><strong>Pedido {sale.orderNumber}</strong><span>{dateTime(sale.createdAt)}</span></div><em className={`order-status status-${sale.status}`}>{orderStatusLabel[sale.status]}</em></header>
       <div className="order-items"><div><div className="order-thumb"><Image src={sale.image} alt={sale.title} fill sizes="64px" /></div><p><strong>{sale.title}</strong><span>Comprador: {sale.buyerName}{sale.buyerCity ? ` · ${sale.buyerCity}${sale.buyerState ? `/${sale.buyerState}` : ''}` : ''}</span></p><b>{currency(sale.price)}</b></div></div>
+      {sale.shipment && <ShipmentInfo shipment={sale.shipment} />}
+      {sales.findIndex((other) => other.orderId === sale.orderId) === index && <ShipmentControls orderId={sale.orderId} canShip={sale.canShip} canDeliver={sale.canDeliver} address={sale.shippingAddress} recipient={sale.buyerName} done={() => void load()} />}
     </article>)}</div></>
 }
 

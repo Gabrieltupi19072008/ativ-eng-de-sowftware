@@ -110,6 +110,9 @@ const apiListSales = async () => readJson<SaleView[]>(await call('/sales'))
 const apiListAdminOrders = async () => readJson<AdminOrderView[]>(await call('/admin/orders'))
 const apiGetReports = async () => readJson<ReportsView>(await call('/admin/reports'))
 
+const apiShipOrder = (id: string, trackingCode: string) => action(`/orders/${encodeURIComponent(id)}/ship`, { method: 'POST', ...json({ trackingCode }) })
+const apiDeliverOrder = (id: string) => action(`/orders/${encodeURIComponent(id)}/deliver`, { method: 'POST' })
+
 const apiCreateOrder = (input: OrderInput) => action('/orders', { method: 'POST', ...json(input) })
 const apiCancelOrder = (id: string) => action(`/orders/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
 const apiSimulatePayment = (id: string) => action(`/orders/${encodeURIComponent(id)}/simulate-payment`, { method: 'POST' })
@@ -131,3 +134,5 @@ export const simulatePaymentAction: (id: string) => Promise<ActionResult> = USE_
 export const listSales: () => Promise<SaleView[]> = USE_MOCK ? mock.listSales : apiListSales
 export const listAdminOrders: () => Promise<AdminOrderView[]> = USE_MOCK ? mock.listAdminOrders : apiListAdminOrders
 export const getReports: () => Promise<ReportsView> = USE_MOCK ? mock.getReports : apiGetReports
+export const shipOrderAction: (id: string, trackingCode: string) => Promise<ActionResult> = USE_MOCK ? mock.shipOrderAction : apiShipOrder
+export const deliverOrderAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.deliverOrderAction : apiDeliverOrder

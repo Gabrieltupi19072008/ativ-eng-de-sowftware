@@ -1,8 +1,8 @@
 """Tabelas do banco (mesmas de sql/01_schema.sql + sql/02_ajustes_front.sql)."""
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -132,6 +132,7 @@ class Pedido(Base):
     endereco: Mapped[Endereco] = relationship()
     itens: Mapped[list["ItemPedido"]] = relationship(order_by="ItemPedido.id_produto")
     pagamento: Mapped["Pagamento | None"] = relationship(uselist=False)
+    entrega: Mapped["Entrega | None"] = relationship(uselist=False)
 
 
 class ItemPedido(Base):
@@ -154,3 +155,14 @@ class Pagamento(Base):
     status: Mapped[str] = mapped_column(String(20), server_default="PENDENTE")
     valor: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     data_pagamento: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class Entrega(Base):
+    __tablename__ = "entrega"
+
+    id_entrega: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id_pedido: Mapped[int] = mapped_column(ForeignKey("pedido.id_pedido"), unique=True)
+    codigo_rastreio: Mapped[str | None] = mapped_column(String(60), unique=True)
+    transportadora: Mapped[str | None] = mapped_column(String(100))
+    data_envio: Mapped[date | None] = mapped_column(Date)
+    data_entrega: Mapped[date | None] = mapped_column(Date)

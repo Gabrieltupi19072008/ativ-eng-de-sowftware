@@ -328,6 +328,8 @@ export async function listSales(): Promise<SaleView[]> {
         orderId: order.id, orderNumber: order.number, status: order.status, createdAt: order.createdAt, artworkId: item.artworkId,
         title: item.title, artistName: item.artistName, image: item.image, price: item.price,
         buyerName: buyer?.name ?? 'Comprador', buyerCity: buyer?.city ?? '', buyerState: buyer?.state ?? '',
+        shipment: order.shipment ?? null, canShip: order.status === 'paid', canDeliver: order.status === 'shipped',
+        shippingAddress: PAID.includes(order.status) ? order.address : null,
       })
     }
   }
@@ -341,7 +343,7 @@ export async function listAdminOrders(): Promise<AdminOrderView[]> {
   expireOrders(db)
   return [...(db.orders ?? [])].reverse().map((order) => {
     const buyer = db.users.find((u) => u.id === order.ownerId)
-    return { ...publicOrder(order), buyerName: buyer?.name ?? 'Comprador', buyerEmail: buyer?.email ?? '' }
+    return { ...publicOrder(order), buyerName: buyer?.name ?? 'Comprador', buyerEmail: buyer?.email ?? '', canShip: order.status === 'paid', canDeliver: order.status === 'shipped' }
   })
 }
 
@@ -380,4 +382,41 @@ export async function getReports(): Promise<ReportsView> {
     topArtists: [...byArtist.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5),
     salesByTechnique: [...byTechnique.values()].sort((a, b) => b.sold - a.sold),
   }
+}
+
+// ---------- envio e entrega (simulados) ----------
+function sellerOrder(db: Db, me: UserView | null, orderId: string): StoredOrder | undefined {
+  const order = db.orders?.find((o) => o.id === orderId)
+  if (!order || !me) return undefined
+  if (me.role === 'admin') return order
+  const mine = order.items.every((item) => {
+    const art = db.artworks.find((a) => a.id === item.artworkId)
+    return me.role === 'artist' && (art?.ownerId === me.id || item.artistName === me.name)
+  })
+  return mine ? order : undefined
+}
+
+export async function shipOrderAction(orderId: string, trackingCode: string): Promise<ActionResult> {
+  const db = readDb()
+  const order = sellerOrder(db, await currentUser(), orderId)
+  if (!order) return { ok: false, message: 'Pedido não encontrado.' }
+  const code = trackingCode.trim().toUpperCase()
+  if (!/^[A-Z0-9]{5,60}$/.test(code)) return { ok: false, message: 'Informe um código de rastreio válido (5 a 60 letras e números, sem espaços).', field: 'trackingCode' }
+  if ((db.orders ?? []).some((o) => o.shipment?.trackingCode === code)) return { ok: false, message: 'Este código de rastreio já foi usado em outro pedido.', field: 'trackingCode' }
+  if (order.status !== 'paid') return { ok: false, message: 'Só é possível enviar um pedido que já foi pago e ainda não foi enviado.' }
+  order.status = 'shipped'
+  order.shipment = { trackingCode: code, carrier: 'Correios', shippedAt: new Date().toISOString().slice(0, 10), deliveredAt: null }
+  writeDb(db)
+  return { ok: true, message: 'Pedido marcado como enviado.', order: publicOrder(order) }
+}
+
+export async function deliverOrderAction(orderId: string): Promise<ActionResult> {
+  const db = readDb()
+  const order = sellerOrder(db, await currentUser(), orderId)
+  if (!order) return { ok: false, message: 'Pedido não encontrado.' }
+  if (order.status !== 'shipped' || !order.shipment) return { ok: false, message: 'Só é possível marcar como entregue um pedido que já foi enviado.' }
+  order.status = 'delivered'
+  order.shipment.deliveredAt = new Date().toISOString().slice(0, 10)
+  writeDb(db)
+  return { ok: true, message: 'Pedido marcado como entregue.', order: publicOrder(order) }
 }

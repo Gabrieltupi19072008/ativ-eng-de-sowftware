@@ -10,8 +10,8 @@ from database import get_db
 from deps import current_user, require_admin
 from errors import ApiError
 from models import Categoria, Cliente, Estoque, ItemPedido, Pedido, Produto, ProdutoCategoria
-from orders_service import expire_orders
-from serializers import ORDER_STATUS_OUT, absolute_url, order_view
+from orders_service import can_fulfil, expire_orders
+from serializers import ORDER_STATUS_OUT, absolute_url, order_view, shipment_view
 
 router = APIRouter(tags=["sales"])
 
@@ -31,15 +31,28 @@ def my_sales(user: Cliente = Depends(current_user), db: Session = Depends(get_db
         .join(Pedido, Pedido.id_pedido == ItemPedido.id_pedido)
         .join(Cliente, Cliente.id_cliente == Pedido.id_cliente)
         .join(Produto, Produto.id_produto == ItemPedido.id_produto)
-        .options(joinedload(ItemPedido.produto).joinedload(Produto.artista))
+        .options(joinedload(ItemPedido.produto).joinedload(Produto.artista), joinedload(Pedido.entrega), joinedload(Pedido.endereco))
         .where(Pedido.status != "CANCELADO")
         .order_by(Pedido.id_pedido.desc(), ItemPedido.id_produto)
     )
     if user.papel == "ARTISTA":
         query = query.where(Produto.id_artista == user.id_cliente)
 
+    rows = db.execute(query).unique().all()
+    # quem vendeu cada pedido (para saber se este usuário pode enviá-lo sozinho)
+    order_ids = {order.id_pedido for _item, order, _buyer in rows}
+    artists_by_order: dict[int, set[int]] = defaultdict(set)
+    if order_ids:
+        for order_id, artist_id in db.execute(
+            select(ItemPedido.id_pedido, Produto.id_artista).join(Produto, Produto.id_produto == ItemPedido.id_produto).where(ItemPedido.id_pedido.in_(order_ids))
+        ):
+            artists_by_order[order_id].add(artist_id)
+
     sales = []
-    for item, order, buyer in db.execute(query).unique():
+    for item, order, buyer in rows:
+        mine = can_fulfil(user, artists_by_order[order.id_pedido])
+        paid = order.status in PAID_STATUSES  # o endereço só é liberado depois do pagamento
+        address = order.endereco
         sales.append({
             "orderId": str(order.id_pedido),
             "orderNumber": f"NG-{order.id_pedido:06d}",
@@ -53,6 +66,13 @@ def my_sales(user: Cliente = Depends(current_user), db: Session = Depends(get_db
             "buyerName": buyer.nome,
             "buyerCity": buyer.cidade or "",
             "buyerState": buyer.estado or "",
+            "shipment": shipment_view(order),
+            "canShip": mine and order.status == "PAGO",
+            "canDeliver": mine and order.status == "ENVIADO",
+            "shippingAddress": {
+                "cep": address.cep, "street": address.logradouro, "number": address.numero, "complement": address.complemento or "",
+                "neighborhood": address.bairro, "city": address.cidade, "state": address.estado,
+            } if paid and mine else None,
         })
     return sales
 
@@ -66,11 +86,13 @@ def all_orders(_admin: Cliente = Depends(require_admin), db: Session = Depends(g
             selectinload(Pedido.itens).joinedload(ItemPedido.produto).joinedload(Produto.artista),
             joinedload(Pedido.endereco),
             joinedload(Pedido.pagamento),
+            joinedload(Pedido.entrega),
         )
         .order_by(Pedido.id_pedido.desc())
     ).unique())
     buyers = {c.id_cliente: c for c in db.scalars(select(Cliente).where(Cliente.id_cliente.in_({o.id_cliente for o in orders})))}
-    return [{**order_view(o, config.FAKE_PAYMENTS), "buyerName": buyers[o.id_cliente].nome, "buyerEmail": buyers[o.id_cliente].email} for o in orders]
+    return [{**order_view(o, config.FAKE_PAYMENTS), "buyerName": buyers[o.id_cliente].nome, "buyerEmail": buyers[o.id_cliente].email,
+             "canShip": o.status == "PAGO", "canDeliver": o.status == "ENVIADO"} for o in orders]
 
 
 @router.get("/admin/reports")

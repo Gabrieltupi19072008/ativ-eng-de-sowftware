@@ -32,7 +32,7 @@ def cleanup():
     from sqlalchemy import delete, select
 
     from database import SessionLocal
-    from models import Cliente, Endereco, Estoque, ItemPedido, Pagamento, Pedido, PortfolioImagem, Produto, ProdutoCategoria, ProdutoImagem
+    from models import Cliente, Endereco, Entrega, Estoque, ItemPedido, Pagamento, Pedido, PortfolioImagem, Produto, ProdutoCategoria, ProdutoImagem
 
     with SessionLocal() as db:
         users = list(db.scalars(select(Cliente.id_cliente).where(Cliente.email.like("%@example.com"))))
@@ -40,6 +40,7 @@ def cleanup():
             return
         products = list(db.scalars(select(Produto.id_produto).where(Produto.id_artista.in_(users))))
         orders = list(db.scalars(select(Pedido.id_pedido).where(Pedido.id_cliente.in_(users))))
+        db.execute(delete(Entrega).where(Entrega.id_pedido.in_(orders)))
         db.execute(delete(Pagamento).where(Pagamento.id_pedido.in_(orders)))
         db.execute(delete(ItemPedido).where((ItemPedido.id_pedido.in_(orders)) | (ItemPedido.id_produto.in_(products))))
         db.execute(delete(Pedido).where(Pedido.id_pedido.in_(orders)))
@@ -161,6 +162,18 @@ def main():
     r = owner.post(f"/orders/{mine['id']}/simulate-payment")
     check("pagamento simulado marca como pago", r.status_code == 200 and r.json()["order"]["status"] == "paid")
     check("artista vê a obra como vendida", next(x for x in artist.get("/artworks").json() if x["id"] == mine["items"][0]["artworkId"])["status"] == "sold")
+
+    # envio e entrega (tabela entrega, com código de rastreio único)
+    code = f"SM{stamp}BR"[-13:].upper()
+    check("comprador não envia pedido", owner.post(f"/orders/{mine['id']}/ship", json={"trackingCode": code}).status_code == 404)
+    sale = next(x for x in artist.get("/sales").json() if x["orderId"] == mine["id"])
+    check("artista vê que pode enviar e o endereço", sale["canShip"] is True and sale["shippingAddress"] is not None)
+    r = artist.post(f"/orders/{mine['id']}/ship", json={"trackingCode": code})
+    check("artista marca como enviado com rastreio", r.status_code == 200 and r.json()["order"]["status"] == "shipped" and r.json()["order"]["shipment"]["trackingCode"] == code, r.text[:120])
+    check("enviar de novo é recusado", artist.post(f"/orders/{mine['id']}/ship", json={"trackingCode": code}).status_code == 409)
+    check("comprador vê o rastreio", next(o for o in owner.get("/orders").json() if o["id"] == mine["id"])["shipment"]["trackingCode"] == code)
+    r = artist.post(f"/orders/{mine['id']}/deliver")
+    check("artista marca como entregue", r.status_code == 200 and r.json()["order"]["status"] == "delivered" and r.json()["order"]["shipment"]["deliveredAt"], r.text[:120])
 
     # pedido vencido volta à vitrine sozinho
     pending = [o for o in buyer.get("/orders").json() + buyer2.get("/orders").json() if o["status"] == "pending"][0]
