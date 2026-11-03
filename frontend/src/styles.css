@@ -436,7 +436,7 @@ img { object-fit: cover; }
 .artist-admin-grid .btn { grid-column: 3; grid-row: 1; margin: 0; }
 .status-active { color: var(--green); }
 .artwork-admin-table { overflow-x: auto; }
-.table-head, .artwork-admin-table article { min-width: 760px; display: grid; grid-template-columns: 1.7fr 1.2fr .9fr .7fr .6fr; gap: 1rem; align-items: center; }
+.table-head, .artwork-admin-table article { min-width: 900px; display: grid; grid-template-columns: 1.7fr 1.2fr .9fr .7fr .7fr .9fr; gap: 1rem; align-items: center; }
 .table-head { padding: .75rem 1.2rem; background: var(--paper); color: var(--muted); font-size: .59rem; text-transform: uppercase; letter-spacing: .08em; }
 .artwork-admin-table article { padding: .85rem 1.2rem; border-top: 1px solid var(--line); font-size: .7rem; }
 .artwork-admin-table article:first-of-type { border-top: 0; }
@@ -713,3 +713,7 @@ img { object-fit: cover; }
 .ship-to { margin: 0; font-size: .74rem; line-height: 1.5; }
 .theme-dark .shipment-controls { background: #101010; border-color: #2a2a2a; }
 .theme-dark .shipment-info { border-color: #2a2a2a; }
+
+/* edição de obra e ações do catálogo */
+.edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .8rem; }
+.artwork-admin-table article .btn { justify-self: start; padding: .55rem .9rem; font-size: .62rem; }

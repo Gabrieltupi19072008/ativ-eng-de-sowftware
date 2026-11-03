@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { cancelOrderAction, createArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+import { cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
 
 export type Address = {
   cep: string
@@ -26,6 +26,7 @@ export type UserView = {
 export type ArtworkView = {
   id: string
   title: string
+  artistId: string
   artistName: string
   technique: string
   description: string
@@ -294,13 +295,13 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
 
   return <div className={`preview-theme theme-${theme}`}>
     {view === 'admin' ? (
-      <Admin candidates={initialCandidates} artworks={artworks} user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} back={() => navigate('shop')} review={(id, decision, note) => run(() => reviewArtistAction(id, decision, note))} pending={isPending} logout={exitAccount} />
+      <Admin candidates={initialCandidates} artworks={artworks} user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} back={() => navigate('shop')} review={(id, decision, note) => run(() => reviewArtistAction(id, decision, note))} reload={onRefresh} pending={isPending} logout={exitAccount} />
     ) : (
       <div className="app-shell">
         <Header user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} cartCount={cart.length} onCart={() => setCartOpen(true)} onAccount={() => navigate('account')} onShop={() => navigate('shop')} onAdd={() => navigate('add-art')} onAdmin={() => navigate('admin')} logout={exitAccount} />
         {view === 'shop' && <Shop user={user} artworks={filtered} total={artworks.length} filter={activeFilter} setFilter={setActiveFilter} favorite={favorites} toggleFavorite={(id) => setFavorites((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} addCart={(art) => { setCart((items) => items.some((item) => item.id === art.id) ? items : [...items, art]); setMessage({ text: `${art.title} foi adicionada ao carrinho.` }) }} select={setSelectedArt} onAdd={() => navigate('add-art')} />}
         {view === 'add-art' && <AddArtwork back={() => navigate('shop')} pending={isPending} submit={(data) => run(() => createArtworkAction(data), () => navigate('shop'))} />}
-        {view === 'account' && <Account user={user} initialTab={accountTab} back={() => { setAccountTab('personal'); navigate('shop') }} onOrdersChange={onRefresh} />}
+        {view === 'account' && <Account user={user} artworks={artworks} initialTab={accountTab} back={() => { setAccountTab('personal'); navigate('shop') }} onOrdersChange={onRefresh} />}
       </div>
     )}
     {cartOpen && <Cart items={cart} close={() => setCartOpen(false)} remove={(id) => setCart((items) => items.filter((item) => item.id !== id))} checkout={() => { setCartOpen(false); setCheckoutOpen(true) }} />}
@@ -492,7 +493,7 @@ function AddArtwork({ back, pending, submit }: { back: () => void; pending: bool
   </main>
 }
 
-function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, review, pending, logout }: { candidates: ArtistCandidate[]; artworks: ArtworkView[]; user: UserView; theme: 'light' | 'dark'; toggleTheme: () => void; back: () => void; review: (id: string, decision: 'approved' | 'rejected', note: string) => void; pending: boolean; logout: () => void }) {
+function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, review, reload, pending, logout }: { candidates: ArtistCandidate[]; artworks: ArtworkView[]; reload: () => void; user: UserView; theme: 'light' | 'dark'; toggleTheme: () => void; back: () => void; review: (id: string, decision: 'approved' | 'rejected', note: string) => void; pending: boolean; logout: () => void }) {
   const [tab, setTab] = useState<'approvals' | 'artists' | 'artworks' | 'orders' | 'reports'>('approvals')
   const [candidates, setCandidates] = useState(initial)
   const [selected, setSelected] = useState<ArtistCandidate | null>(initial[0] ?? null)
@@ -527,6 +528,26 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
     reports: ['Relatórios e estatísticas', 'Acompanhe os principais números da Nambá Galerie.'],
   }
 
+  const [artworkBusy, setArtworkBusy] = useState<string | null>(null)
+  const [artworkNotice, setArtworkNotice] = useState<{ text: string; error?: boolean } | null>(null)
+  async function toggleVisibility(art: ArtworkView) {
+    setArtworkBusy(art.id)
+    const result = await setArtworkVisibilityAction(art.id, art.status === 'hidden')
+    setArtworkNotice({ text: result.message, error: !result.ok })
+    setArtworkBusy(null)
+    reload()
+  }
+  function exportArtworks() {
+    const cell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
+    const rows = [['Obra', 'Artista', 'Técnica', 'Valor (R$)', 'Situação'], ...artworks.map((art) => [art.title, art.artistName, art.technique, art.price.toFixed(2).replace('.', ','), artworkStatusLabel[art.status] ?? art.status])]
+    const csv = '\ufeff' + rows.map((row) => row.map(cell).join(';')).join('\r\n')
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    link.download = 'obras-namba-galerie.csv'
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }
+
   function decide(decision: 'approved' | 'rejected') {
     if (!selected) return
     review(selected.id, decision, note)
@@ -550,7 +571,7 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
         <section className="candidate-detail">{selected ? <><div className="candidate-heading"><div><span className="candidate-avatar large">{selected.name.charAt(0)}</span><div><p className="eyebrow">Candidatura de artista</p><h2>{selected.name}</h2><span>{selected.email} · {selected.city}{selected.state ? `, ${selected.state}` : ''}</span></div></div><small>Enviado em {new Date(selected.createdAt).toLocaleDateString('pt-BR')}</small></div><div className="candidate-bio"><span>Pesquisa artística</span><h3>{selected.artStyle}</h3><p>{selected.artistBio || 'O artista ainda não adicionou uma descrição detalhada.'}</p></div><div className="portfolio-heading"><div><span>Portfólio enviado</span><strong>{selected.portfolio.length} obras</strong></div><p>Clique em uma imagem para ampliar e observar os detalhes.</p></div>{selected.portfolio.length ? <div className="portfolio-grid">{selected.portfolio.map((src, index) => <button type="button" key={src} onClick={() => setLightbox(src)}><Image src={src} alt={`Obra ${index + 1} do portfólio de ${selected.name}`} fill sizes="25vw" /><span>Ampliar</span></button>)}</div> : <div className="portfolio-empty">Nenhuma imagem de portfólio foi anexada.</div>}<label className="field review-field"><span>Observação para o artista (opcional)</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Explique sua decisão ou solicite ajustes…" /></label><div className="review-actions"><Button kind="danger" disabled={pending} onClick={() => decide('rejected')}><Icon name="close" size={17} /> Rejeitar</Button><Button kind="gold" disabled={pending} onClick={() => decide('approved')}><Icon name="check" size={17} /> Aprovar artista</Button></div></> : <div className="review-complete"><span><Icon name="check" size={32} /></span><h2>Curadoria em dia</h2><p>Todos os cadastros foram analisados.</p></div>}</section>
       </div>}
       {tab === 'artists' && <section className="admin-panel"><div className="panel-heading"><div><h2>Artistas ativos</h2><p>{artists.length} perfis disponíveis na plataforma</p></div><label className="admin-search"><span>Buscar</span><input placeholder="Nome ou técnica" /></label></div><div className="artist-admin-grid">{artists.map((artist) => <article key={artist.id}><span className="candidate-avatar large">{artist.name.charAt(0)}</span><div><h3>{artist.name}</h3><p>{artist.style}</p><small>{artist.location}</small></div><dl><div><dt>Obras</dt><dd>{artist.artworks}</dd></div><div><dt>Status</dt><dd className="status-active">Ativo</dd></div></dl><Button kind="outline">Ver perfil</Button></article>)}</div></section>}
-      {tab === 'artworks' && <section className="admin-panel"><div className="panel-heading"><div><h2>Catálogo de obras</h2><p>{artworks.length} obras cadastradas</p></div><Button kind="outline">Exportar lista</Button></div><div className="artwork-admin-table"><div className="table-head"><span>Obra</span><span>Artista</span><span>Técnica</span><span>Valor</span><span>Status</span></div>{artworks.map((artwork) => <article key={artwork.id}><div className="admin-artwork-title"><div>{artwork.image && <Image src={artwork.image} alt="" fill sizes="54px" />}</div><strong>{artwork.title}</strong></div><span>{artwork.artistName}</span><span>{artwork.technique}</span><strong>{currency(artwork.price)}</strong><em>{artworkStatusLabel[artwork.status] ?? artwork.status}</em></article>)}</div></section>}
+      {tab === 'artworks' && <section className="admin-panel"><div className="panel-heading"><div><h2>Catálogo de obras</h2><p>{artworks.length} obras cadastradas</p></div><Button kind="outline" onClick={exportArtworks}>Exportar lista</Button></div>{artworkNotice && <p className={`orders-notice ${artworkNotice.error ? 'is-error' : 'is-ok'}`} role="status">{artworkNotice.text}</p>}<div className="artwork-admin-table"><div className="table-head"><span>Obra</span><span>Artista</span><span>Técnica</span><span>Valor</span><span>Status</span><span>Ação</span></div>{artworks.map((artwork) => <article key={artwork.id}><div className="admin-artwork-title"><div>{artwork.image && <Image src={artwork.image} alt="" fill sizes="54px" />}</div><strong>{artwork.title}</strong></div><span>{artwork.artistName}</span><span>{artwork.technique}</span><strong>{currency(artwork.price)}</strong><em>{artworkStatusLabel[artwork.status] ?? artwork.status}</em>{artwork.status === 'published' || artwork.status === 'hidden' ? <Button kind="outline" disabled={artworkBusy === artwork.id} onClick={() => void toggleVisibility(artwork)}>{artwork.status === 'hidden' ? 'Republicar' : 'Despublicar'}</Button> : <span />}</article>)}</div></section>}
       {tab === 'orders' && <section className="admin-panel"><div className="panel-heading"><div><h2>Todos os pedidos</h2><p>{adminOrders ? `${adminOrders.length} pedidos registrados` : 'Carregando…'}</p></div></div>
         {dataFailed ? <DataError retry={() => void loadData()} /> : adminOrders && (adminOrders.length ? <div className="orders-list">{adminOrders.map((order) => <article className="order-card" key={order.id}>
           <header><div><strong>Pedido {order.number}</strong><span>{dateTime(order.createdAt)} · {order.buyerName} ({order.buyerEmail})</span></div><em className={`order-status status-${order.status}`}>{orderStatusLabel[order.status]}</em></header>
@@ -571,13 +592,13 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
     </section>{lightbox && <div className="lightbox" onClick={() => setLightbox(null)}><button type="button" aria-label="Fechar"><Icon name="close" /></button><div><Image src={lightbox} alt="Obra ampliada do portfólio" fill sizes="90vw" /></div></div>}</main>
 }
 
-function Account({ user, back, initialTab = 'personal', onOrdersChange }: { user: UserView; back: () => void; initialTab?: 'personal' | 'orders' | 'sales'; onOrdersChange?: () => void }) {
-  const [tab, setTab] = useState<'personal' | 'addresses' | 'orders' | 'sales' | 'security'>(initialTab)
+function Account({ user, artworks, back, initialTab = 'personal', onOrdersChange }: { user: UserView; artworks: ArtworkView[]; back: () => void; initialTab?: 'personal' | 'orders' | 'sales'; onOrdersChange?: () => void }) {
+  const [tab, setTab] = useState<'personal' | 'addresses' | 'orders' | 'sales' | 'artworks' | 'security'>(initialTab)
   const tabs = [
     { id: 'personal' as const, label: 'Dados pessoais' },
     { id: 'addresses' as const, label: 'Endereços' },
     { id: 'orders' as const, label: 'Pedidos' },
-    ...(user.role === 'artist' ? [{ id: 'sales' as const, label: 'Minhas vendas' }] : []),
+    ...(user.role === 'artist' ? [{ id: 'artworks' as const, label: 'Minhas obras' }, { id: 'sales' as const, label: 'Minhas vendas' }] : []),
     { id: 'security' as const, label: 'Segurança' },
   ]
 
@@ -587,6 +608,7 @@ function Account({ user, back, initialTab = 'personal', onOrdersChange }: { user
       {tab === 'addresses' && <><div className="account-section-heading"><div><h2>Endereços</h2><p>Gerencie os locais usados para entrega das suas obras.</p></div><Button kind="outline">Adicionar endereço</Button></div><div className="account-empty"><span><Icon name="user" size={25} /></span><h3>Nenhum endereço cadastrado</h3><p>Quando você adicionar um endereço, ele aparecerá aqui para facilitar suas próximas compras.</p><Button kind="gold">Cadastrar primeiro endereço</Button></div></>}
       {tab === 'orders' && <OrdersPanel back={back} onChange={onOrdersChange} />}
       {tab === 'sales' && <SalesPanel />}
+      {tab === 'artworks' && <MyArtworks artworks={artworks.filter((art) => art.artistId === user.id)} onChange={onOrdersChange} />}
       {tab === 'security' && <><h2>Segurança</h2><p>Opções para proteger o acesso à sua conta.</p><div className="security-list"><article><div><strong>Senha de acesso</strong><span>Nenhuma senha configurada no modo de demonstração.</span></div><Button kind="outline">Configurar senha</Button></article><article><div><strong>Verificação em duas etapas</strong><span>Adicione uma camada extra de proteção ao seu perfil.</span></div><button type="button" className="status-control">Desativada</button></article><article><div><strong>Sessões conectadas</strong><span>Este é o único acesso de demonstração ativo.</span></div><Button kind="outline">Ver sessões</Button></article></div><div className="security-note"><Icon name="check" size={18} /><p><strong>Ambiente de demonstração</strong>Nenhuma alteração de segurança será salva neste momento.</p></div></>}
     </section>
   </div></main>
@@ -676,6 +698,72 @@ function ShipmentControls({ orderId, canShip, canDeliver, address, recipient, do
     {canDeliver && <Button kind="gold" disabled={busy} onClick={() => void act(() => deliverOrderAction(orderId))}>Marcar como entregue</Button>}
     {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
   </div>
+}
+
+function MyArtworks({ artworks, onChange }: { artworks: ArtworkView[]; onChange?: () => void }) {
+  const [editing, setEditing] = useState<ArtworkView | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+  const [formError, setFormError] = useState('')
+  const submitType = useRef<'publish' | 'draft'>('publish') // qual botão de salvar foi clicado
+
+  async function run(request: () => Promise<ActionResult>, onOk?: () => void) {
+    setBusy(true)
+    const result = await request()
+    setBusy(false)
+    if (result.ok) {
+      setNotice({ text: result.message })
+      setFormError('')
+      onOk?.()
+      onChange?.()
+    } else if (editing) {
+      setFormError(result.message)
+    } else {
+      setNotice({ text: result.message, error: true })
+    }
+  }
+
+  function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editing) return
+    const data = new FormData(event.currentTarget)
+    const field = (name: string) => String(data.get(name) ?? '')
+    void run(() => updateArtworkAction(editing.id, { title: field('title'), technique: field('technique'), description: field('description'), price: field('price'), width: field('width'), height: field('height'), year: field('year'), submitType: submitType.current }), () => setEditing(null))
+  }
+
+  if (editing) {
+    return <><h2>Editar obra</h2><p>Altere os dados e escolha se ela fica publicada ou volta a ser rascunho. As imagens não mudam por aqui.</p>
+      <form className="form-stack" onSubmit={save}>
+        <Field label="Título da obra" name="title" defaultValue={editing.title} required />
+        <label className="field"><span>Técnica</span><select name="technique" defaultValue={editing.technique} required>{filters.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label>
+        <div className="form-grid three"><Field label="Largura (cm)" name="width" type="number" step="0.01" min="0.01" defaultValue={editing.width ? String(editing.width) : ''} /><Field label="Altura (cm)" name="height" type="number" step="0.01" min="0.01" defaultValue={editing.height ? String(editing.height) : ''} /><Field label="Ano" name="year" type="number" defaultValue={editing.year ? String(editing.year) : ''} /></div>
+        <label className="field"><span>História e processo criativo</span><textarea name="description" rows={5} defaultValue={editing.description} /></label>
+        <Field label="Valor de venda (R$)" name="price" type="number" step="0.01" min="0.01" defaultValue={String(editing.price)} required />
+        {formError && <p className="orders-notice is-error" role="alert">{formError}</p>}
+        <div className="editor-actions edit-actions">
+          <Button kind="ghost" onClick={() => { setEditing(null); setFormError('') }}>Cancelar</Button>
+          <Button type="submit" kind="outline" disabled={busy} onClick={() => { submitType.current = 'draft' }}>Salvar como rascunho</Button>
+          <Button type="submit" kind="gold" disabled={busy} onClick={() => { submitType.current = 'publish' }}>Salvar e publicar</Button>
+        </div>
+      </form></>
+  }
+
+  if (!artworks.length) return <><h2>Minhas obras</h2><p>Gerencie as obras que você publicou.</p><div className="account-empty"><span><Icon name="art" size={25} /></span><h3>Você ainda não publicou obras</h3><p>Use o botão "Adicionar arte" no topo para publicar a primeira.</p></div></>
+
+  return <><h2>Minhas obras</h2><p>Edite, tire da vitrine ou exclua as suas obras. Obras reservadas ou vendidas não podem ser alteradas.</p>
+    {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+    <div className="orders-list">{artworks.map((art) => {
+      const locked = art.status === 'reserved' || art.status === 'sold' || art.status === 'hidden'
+      return <article className="order-card" key={art.id}>
+        <div className="order-items"><div><div className="order-thumb"><Image src={art.image} alt={art.title} fill sizes="64px" /></div><p><strong>{art.title}</strong><span>{art.technique} · {artworkStatusLabel[art.status] ?? art.status}</span></p><b>{currency(art.price)}</b></div></div>
+        {art.status === 'hidden' && <p className="order-deadline">Esta obra foi despublicada pela curadoria. Fale com a administração para republicá-la.</p>}
+        {!locked && <div className="order-actions">
+          <Button kind="outline" disabled={busy} onClick={() => { setNotice(null); submitType.current = art.status === 'draft' ? 'draft' : 'publish'; setEditing(art) }}>Editar</Button>
+          <Button kind="outline" disabled={busy} onClick={() => void run(() => updateArtworkAction(art.id, { title: art.title, technique: art.technique, description: art.description, price: String(art.price), width: art.width ? String(art.width) : '', height: art.height ? String(art.height) : '', year: art.year ? String(art.year) : '', submitType: art.status === 'draft' ? 'publish' : 'draft' }))}>{art.status === 'draft' ? 'Publicar' : 'Tirar da vitrine'}</Button>
+          <Button kind="danger" disabled={busy} onClick={() => { if (window.confirm(`Excluir “${art.title}”? Isso não pode ser desfeito.`)) void run(() => deleteArtworkAction(art.id)) }}>Excluir</Button>
+        </div>}
+      </article>
+    })}</div></>
 }
 
 function DataError({ retry }: { retry: () => void }) {
@@ -770,7 +858,7 @@ function ArtModal({ art, close, add }: { art: ArtworkView; close: () => void; ad
   return <div className="modal-backdrop" onClick={close}><div className="art-modal" onClick={(event) => event.stopPropagation()}><button type="button" className="modal-close" onClick={close}><Icon name="close" /></button><div className="modal-image"><Image src={art.image} alt={art.title} fill sizes="60vw" /></div><div className="modal-copy"><p className="eyebrow">{art.technique} · {art.year}</p><h2>{art.title}</h2><span>por {art.artistName}</span><p>{art.description}</p>{art.width && art.height && <dl><div><dt>Dimensões</dt><dd>{art.width} × {art.height} cm</dd></div><div><dt>Autenticidade</dt><dd>Certificado incluso</dd></div></dl>}<strong>{currency(art.price)}</strong><Button kind="gold" className="full" onClick={add}>Adicionar ao carrinho</Button></div></div></div>
 }
 
-const artworkStatusLabel: Record<string, string> = { published: 'Publicada', draft: 'Rascunho', reserved: 'Reservada', sold: 'Vendida' }
+const artworkStatusLabel: Record<string, string> = { published: 'Publicada', draft: 'Rascunho', hidden: 'Despublicada', reserved: 'Reservada', sold: 'Vendida' }
 
 function currency(value: number) {
   // Valores redondos aparecem sem centavos (R$ 880); os demais mostram os centavos (R$ 1.250,50).

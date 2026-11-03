@@ -40,18 +40,19 @@ def user_view(c: Cliente) -> dict:
 
 
 def artwork_status(p: Produto, reserved: bool = False) -> str:
-    """draft = rascunho; reserved = em pedido ainda não pago; sold = estoque zerado; published = à venda."""
+    """draft = rascunho; hidden = despublicada pela curadoria; reserved = em pedido ainda não pago; sold = estoque zerado; published = à venda."""
     if p.status != "PUBLICADA":
         return "draft"
     if (p.estoque.quantidade if p.estoque else 0) <= 0:
         return "reserved" if reserved else "sold"
-    return "published"
+    return "published" if p.ativo == "S" else "hidden"  # hidden = despublicada pela curadoria
 
 
 def artwork_view(p: Produto, reserved: bool = False) -> dict:
     return {
         "id": str(p.id_produto),
         "title": p.nome,
+        "artistId": str(p.id_artista),
         "artistName": p.artista.nome,
         "technique": p.categorias[0].nome if p.categorias else "",
         "description": p.descricao or "",

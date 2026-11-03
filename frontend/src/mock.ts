@@ -3,7 +3,7 @@
 import { seedArtworks, seedCandidates } from './data/seed'
 import type { AdminOrderView, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
 
-import type { ActionResult, OrderInput } from './api'
+import type { ActionResult, ArtworkInput, OrderInput } from './api'
 import { DEMO_ACCOUNTS } from './demoAccounts'
 
 type StoredUser = UserView & {
@@ -37,7 +37,7 @@ function seedDb(): Db {
         artStyle: c.artStyle, artistBio: c.artistBio, portfolio: c.portfolio, createdAt: c.createdAt, password: DEMO_PASSWORD,
       })),
     ],
-    artworks: seedArtworks.map((art) => ({ ...art })),
+    artworks: seedArtworks.map((art) => ({ ...art, ownerId: art.artistId || undefined })),
   }
 }
 
@@ -101,7 +101,7 @@ export async function listArtworks(): Promise<ArtworkView[]> {
   expireOrders(db)
   return db.artworks
     .filter((art) => art.status === 'published' || me?.role === 'admin' || art.ownerId === me?.id)
-    .map(({ ownerId: _ownerId, ...art }) => art)
+    .map(({ ownerId, ...art }) => ({ ...art, artistId: ownerId ?? art.artistId }))
     .reverse()
 }
 
@@ -187,7 +187,7 @@ export async function createArtworkAction(data: FormData): Promise<ActionResult>
   try {
     const db = readDb()
     db.artworks.push({
-      id: `a-${Date.now()}`, ownerId: me.id, artistName: me.name,
+      id: `a-${Date.now()}`, ownerId: me.id, artistId: me.id, artistName: me.name,
       title: text(data, 'title'), technique: text(data, 'technique'), description: text(data, 'description'),
       width: Number(text(data, 'width')) || undefined, height: Number(text(data, 'height')) || undefined,
       year: Number(text(data, 'year')) || new Date().getFullYear(),
@@ -419,4 +419,52 @@ export async function deliverOrderAction(orderId: string): Promise<ActionResult>
   order.shipment.deliveredAt = new Date().toISOString().slice(0, 10)
   writeDb(db)
   return { ok: true, message: 'Pedido marcado como entregue.', order: publicOrder(order) }
+}
+
+// ---------- editar, excluir e despublicar obras (simulado) ----------
+function ownArtwork(db: Db, me: UserView | null, id: string): { art?: StoredArtwork; error?: ActionResult } {
+  const art = db.artworks.find((a) => a.id === id)
+  if (!me || me.role !== 'artist' || !art || (art.ownerId !== me.id && art.artistName !== me.name)) return { error: { ok: false, message: 'Obra não encontrada.' } }
+  if (art.status === 'reserved' || art.status === 'sold') return { error: { ok: false, message: 'Esta obra está reservada ou já foi vendida e não pode mais ser alterada.' } }
+  if (art.status === 'hidden') return { error: { ok: false, message: 'Esta obra foi despublicada pela curadoria. Fale com a administração.' } }
+  return { art }
+}
+
+export async function updateArtworkAction(id: string, input: ArtworkInput): Promise<ActionResult> {
+  const db = readDb()
+  const { art, error } = ownArtwork(db, await currentUser(), id)
+  if (!art) return error!
+  const price = Number(input.price.replace(',', '.'))
+  if (input.title.trim().length < 3) return { ok: false, message: 'Dê um título à obra (de 3 a 150 caracteres).', field: 'title' }
+  if (!(price > 0)) return { ok: false, message: 'Informe um valor válido.', field: 'price' }
+  Object.assign(art, {
+    title: input.title.trim(), technique: input.technique, description: input.description.trim(), price,
+    width: Number(input.width) || undefined, height: Number(input.height) || undefined, year: Number(input.year) || undefined,
+    status: input.submitType === 'draft' ? 'draft' : 'published',
+  })
+  writeDb(db)
+  return { ok: true, message: art.status === 'published' ? 'Obra atualizada.' : 'Obra salva como rascunho.' }
+}
+
+export async function deleteArtworkAction(id: string): Promise<ActionResult> {
+  const db = readDb()
+  const { art, error } = ownArtwork(db, await currentUser(), id)
+  if (!art) return error!
+  if ((db.orders ?? []).some((o) => o.items.some((item) => item.artworkId === id))) {
+    return { ok: false, message: 'Esta obra já apareceu em um pedido e não pode ser excluída. Salve-a como rascunho para tirá-la da vitrine.' }
+  }
+  db.artworks = db.artworks.filter((a) => a.id !== id)
+  writeDb(db)
+  return { ok: true, message: 'Obra excluída.' }
+}
+
+export async function setArtworkVisibilityAction(id: string, visible: boolean): Promise<ActionResult> {
+  const me = await currentUser()
+  const db = readDb()
+  const art = db.artworks.find((a) => a.id === id)
+  if (me?.role !== 'admin' || !art) return { ok: false, message: 'Obra não encontrada.' }
+  if (visible && art.status === 'hidden') art.status = 'published'
+  else if (!visible && art.status === 'published') art.status = 'hidden'
+  writeDb(db)
+  return { ok: true, message: visible ? 'Obra devolvida à vitrine.' : 'Obra despublicada.' }
 }

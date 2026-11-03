@@ -175,6 +175,19 @@ def main():
     r = artist.post(f"/orders/{mine['id']}/deliver")
     check("artista marca como entregue", r.status_code == 200 and r.json()["order"]["status"] == "delivered" and r.json()["order"]["shipment"]["deliveredAt"], r.text[:120])
 
+    # editar, tirar da vitrine e excluir obra (artista) e despublicar (admin)
+    extra = publish("Obra para editar")
+    edit = {"title": "Obra editada", "technique": "Pastel", "description": "novo texto", "price": "321,50", "width": "10", "height": "20", "year": "2025", "submitType": "publish"}
+    r = artist.patch(f"/artworks/{extra['id']}", json=edit)
+    check("artista edita a própria obra", r.status_code == 200 and r.json()["artwork"]["price"] == 321.5 and r.json()["artwork"]["technique"] == "Pastel", r.text[:100])
+    check("comprador não edita obra alheia", buyer.patch(f"/artworks/{extra['id']}", json=edit).status_code == 404)
+    check("admin despublica", admin.patch(f"/artworks/{extra['id']}/visibility", json={"visible": False}).json()["artwork"]["status"] == "hidden")
+    check("obra despublicada sai da vitrine", extra["id"] not in public_ids())
+    check("artista não edita obra despublicada", artist.patch(f"/artworks/{extra['id']}", json=edit).status_code == 403)
+    check("admin republica", admin.patch(f"/artworks/{extra['id']}/visibility", json={"visible": True}).status_code == 200 and extra["id"] in public_ids())
+    check("obra reservada/vendida não pode ser excluída", artist.delete(f"/artworks/{mine['items'][0]['artworkId']}").status_code == 409)
+    check("artista exclui obra sem pedidos", artist.delete(f"/artworks/{extra['id']}").status_code == 200 and extra["id"] not in public_ids())
+
     # pedido vencido volta à vitrine sozinho
     pending = [o for o in buyer.get("/orders").json() + buyer2.get("/orders").json() if o["status"] == "pending"][0]
     from database import SessionLocal

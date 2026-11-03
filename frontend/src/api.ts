@@ -11,6 +11,7 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 // order e unavailable só vêm nas ações de pedido (unavailable = ids de obras que já não estão à venda)
 export type ActionResult = { ok: boolean; message: string; field?: string; order?: OrderView; unavailable?: string[] }
+export type ArtworkInput = { title: string; technique: string; description: string; price: string; width: string; height: string; year: string; submitType: 'publish' | 'draft' }
 export type OrderInput = { items: string[]; address: Address; paymentMethod: PaymentMethod }
 
 const OFFLINE: ActionResult = { ok: false, message: 'Não foi possível conectar ao servidor. Tente novamente em instantes.' }
@@ -110,6 +111,10 @@ const apiListSales = async () => readJson<SaleView[]>(await call('/sales'))
 const apiListAdminOrders = async () => readJson<AdminOrderView[]>(await call('/admin/orders'))
 const apiGetReports = async () => readJson<ReportsView>(await call('/admin/reports'))
 
+const apiUpdateArtwork = (id: string, input: ArtworkInput) => action(`/artworks/${encodeURIComponent(id)}`, { method: 'PATCH', ...json(input) })
+const apiDeleteArtwork = (id: string) => action(`/artworks/${encodeURIComponent(id)}`, { method: 'DELETE' })
+const apiSetVisibility = (id: string, visible: boolean) => action(`/artworks/${encodeURIComponent(id)}/visibility`, { method: 'PATCH', ...json({ visible }) })
+
 const apiShipOrder = (id: string, trackingCode: string) => action(`/orders/${encodeURIComponent(id)}/ship`, { method: 'POST', ...json({ trackingCode }) })
 const apiDeliverOrder = (id: string) => action(`/orders/${encodeURIComponent(id)}/deliver`, { method: 'POST' })
 
@@ -136,3 +141,6 @@ export const listAdminOrders: () => Promise<AdminOrderView[]> = USE_MOCK ? mock.
 export const getReports: () => Promise<ReportsView> = USE_MOCK ? mock.getReports : apiGetReports
 export const shipOrderAction: (id: string, trackingCode: string) => Promise<ActionResult> = USE_MOCK ? mock.shipOrderAction : apiShipOrder
 export const deliverOrderAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.deliverOrderAction : apiDeliverOrder
+export const updateArtworkAction: (id: string, input: ArtworkInput) => Promise<ActionResult> = USE_MOCK ? mock.updateArtworkAction : apiUpdateArtwork
+export const deleteArtworkAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.deleteArtworkAction : apiDeleteArtwork
+export const setArtworkVisibilityAction: (id: string, visible: boolean) => Promise<ActionResult> = USE_MOCK ? mock.setArtworkVisibilityAction : apiSetVisibility
