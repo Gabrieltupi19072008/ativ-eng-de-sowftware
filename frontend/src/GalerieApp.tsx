@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { changePasswordAction, deleteAddressAction, listAddresses, saveAddressAction, updateProfileAction, cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+import { forgotPasswordAction, listFavorites, listPublicArtists, resetPasswordAction, setFavoriteAction, changePasswordAction, deleteAddressAction, listAddresses, saveAddressAction, updateProfileAction, cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
 
 export type Address = {
   cep: string
@@ -23,8 +23,11 @@ export type UserView = {
   state?: string
   phone?: string
   bio?: string
+  birthDate?: string
   address?: Address
 }
+
+export type PublicArtist = { id: string; name: string; city: string; state: string; artStyle: string; bio: string; works: number; cover: string }
 
 export type SavedAddress = Address & { id: string }
 
@@ -110,7 +113,7 @@ export type ArtistCandidate = {
   portfolio: string[]
 }
 
-type View = 'login' | 'register' | 'shop' | 'add-art' | 'account' | 'admin'
+type View = 'login' | 'register' | 'forgot' | 'reset' | 'shop' | 'artists' | 'collections' | 'add-art' | 'account' | 'admin'
 type RegisterRole = 'buyer' | 'artist'
 
 const filters = ['Todos', 'Óleo', 'Aquarela', 'Acrílica', 'Pastel', 'Arte Digital', 'Técnica Mista']
@@ -175,7 +178,9 @@ function Toast({ message, error = false, onClose }: { message: string; error?: b
 }
 
 export default function GalerieApp({ initialUser, initialArtworks, initialCandidates, onRefresh }: { initialUser: UserView | null; initialArtworks: ArtworkView[]; initialCandidates: ArtistCandidate[]; onRefresh: () => void }) {
-  const [view, setView] = useState<View>(initialUser ? (initialUser.role === 'admin' ? 'admin' : 'shop') : 'login')
+  const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset') ?? '', [])
+  const [view, setView] = useState<View>(initialUser ? (initialUser.role === 'admin' ? 'admin' : 'shop') : resetToken ? 'reset' : 'login')
+  const [artistFilter, setArtistFilter] = useState<{ id: string; name: string } | null>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [registerRole, setRegisterRole] = useState<RegisterRole>('buyer')
   const [activeFilter, setActiveFilter] = useState('Todos')
@@ -190,7 +195,24 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
   const [accountTab, setAccountTab] = useState<'personal' | 'orders'>('personal')
 
   const artworks = initialArtworks
-  const filtered = useMemo(() => artworks.filter((art) => art.status === 'published' && (activeFilter === 'Todos' || art.technique === activeFilter)), [artworks, activeFilter])
+  const filtered = useMemo(() => artworks.filter((art) => art.status === 'published'
+    && (activeFilter === 'Todos' || (activeFilter === 'Favoritos' ? favorites.includes(art.id) : art.technique === activeFilter))
+    && (!artistFilter || art.artistId === artistFilter.id)), [artworks, activeFilter, favorites, artistFilter])
+
+  // Favoritos ficam no banco: carrega ao entrar e grava a cada clique (o coração muda na hora e volta atrás se a gravação falhar)
+  useEffect(() => {
+    if (initialUser) void listFavorites().then(setFavorites).catch(() => undefined)
+  }, [initialUser])
+
+  function toggleFavorite(id: string) {
+    const turnOn = !favorites.includes(id)
+    setFavorites((items) => turnOn ? [...items, id] : items.filter((item) => item !== id))
+    void setFavoriteAction(id, turnOn).then((result) => {
+      if (result.ok) return
+      setFavorites((items) => turnOn ? items.filter((item) => item !== id) : [...items, id])
+      setMessage({ text: result.message, error: true })
+    })
+  }
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem('galerie-theme')
@@ -283,7 +305,16 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
         setRegisterRole('buyer')
         navigate('register')
       }}
+      forgot={() => navigate('forgot')}
     />
+  }
+
+  if (!initialUser && view === 'forgot') {
+    return <ForgotPassword back={() => navigate('login')} />
+  }
+
+  if (!initialUser && view === 'reset') {
+    return <ResetPassword token={resetToken} done={() => { window.history.replaceState({}, '', window.location.pathname); navigate('login') }} />
   }
 
   if (!initialUser && view === 'register') {
@@ -295,7 +326,7 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
 
   const user = initialUser
   if (!user) {
-    return <Login submit={enterAccount} quickAccess={enterDemoAccount} pending={isPending} error={message?.error ? message.text : null} createAccount={() => navigate('register')} />
+    return <Login submit={enterAccount} quickAccess={enterDemoAccount} pending={isPending} error={message?.error ? message.text : null} createAccount={() => navigate('register')} forgot={() => navigate('forgot')} />
   }
 
   return <div className={`preview-theme theme-${theme}`}>
@@ -303,8 +334,10 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
       <Admin candidates={initialCandidates} artworks={artworks} user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} back={() => navigate('shop')} review={(id, decision, note) => run(() => reviewArtistAction(id, decision, note))} reload={onRefresh} pending={isPending} logout={exitAccount} />
     ) : (
       <div className="app-shell">
-        <Header user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} cartCount={cart.length} onCart={() => setCartOpen(true)} onAccount={() => navigate('account')} onShop={() => navigate('shop')} onAdd={() => navigate('add-art')} onAdmin={() => navigate('admin')} logout={exitAccount} />
-        {view === 'shop' && <Shop user={user} artworks={filtered} total={artworks.length} filter={activeFilter} setFilter={setActiveFilter} favorite={favorites} toggleFavorite={(id) => setFavorites((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} addCart={(art) => { setCart((items) => items.some((item) => item.id === art.id) ? items : [...items, art]); setMessage({ text: `${art.title} foi adicionada ao carrinho.` }) }} select={setSelectedArt} onAdd={() => navigate('add-art')} />}
+        <Header user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} cartCount={cart.length} onCart={() => setCartOpen(true)} onAccount={() => navigate('account')} onShop={() => { setActiveFilter('Todos'); setArtistFilter(null); navigate('shop') }} onArtists={() => navigate('artists')} onCollections={() => navigate('collections')} onAdd={() => navigate('add-art')} onAdmin={() => navigate('admin')} logout={exitAccount} />
+        {view === 'shop' && <Shop user={user} artworks={filtered} total={artworks.length} filter={activeFilter} setFilter={setActiveFilter} favorite={favorites} toggleFavorite={toggleFavorite} artistFilter={artistFilter} clearArtist={() => setArtistFilter(null)} addCart={(art) => { setCart((items) => items.some((item) => item.id === art.id) ? items : [...items, art]); setMessage({ text: `${art.title} foi adicionada ao carrinho.` }) }} select={setSelectedArt} onAdd={() => navigate('add-art')} />}
+        {view === 'artists' && <ArtistsPage openArtist={(artist) => { setArtistFilter({ id: artist.id, name: artist.name }); setActiveFilter('Todos'); navigate('shop') }} />}
+        {view === 'collections' && <CollectionsPage artworks={artworks} openCollection={(technique) => { setArtistFilter(null); setActiveFilter(technique); navigate('shop') }} />}
         {view === 'add-art' && <AddArtwork back={() => navigate('shop')} pending={isPending} submit={(data) => run(() => createArtworkAction(data), () => navigate('shop'))} />}
         {view === 'account' && <Account user={user} artworks={artworks} initialTab={accountTab} back={() => { setAccountTab('personal'); navigate('shop') }} onOrdersChange={onRefresh} />}
       </div>
@@ -341,12 +374,13 @@ function useScrollProgress(ref: { current: HTMLElement | null }) {
 
 const step = (i: number) => ({ '--i': i }) as CSSProperties
 
-function Login({ submit, quickAccess, pending, error, createAccount }: {
+function Login({ submit, quickAccess, pending, error, createAccount, forgot }: {
   submit: (data: FormData) => void
   quickAccess: (role: 'buyer' | 'artist' | 'admin') => void
   pending: boolean
   error: string | null
   createAccount: () => void
+  forgot: () => void
 }) {
   const [notice, setNotice] = useState<string | null>(null)
   const journey = useRef<HTMLElement>(null)
@@ -378,7 +412,7 @@ function Login({ submit, quickAccess, pending, error, createAccount }: {
           {error && <p className="auth-error">{error}</p>}
           <Button type="submit" kind="gold" disabled={pending} className="full">{pending ? 'Entrando…' : 'Entrar'} <Icon name="arrow" /></Button>
         </form>
-        <div className="auth-links reveal" style={step(2)}><button type="button" onClick={createAccount}>Criar conta</button><span /><button type="button" onClick={() => setNotice('A recuperação de senha será conectada na versão final.')}>Esqueci minha senha</button></div>
+        <div className="auth-links reveal" style={step(2)}><button type="button" onClick={createAccount}>Criar conta</button><span /><button type="button" onClick={forgot}>Esqueci minha senha</button></div>
       </div>
     </section>
     {notice && <Toast message={notice} onClose={() => setNotice(null)} />}
@@ -467,9 +501,9 @@ function Register({ role, setRole, back, pending, submit }: { role: RegisterRole
   </div></main>
 }
 
-function Header({ user, theme, toggleTheme, cartCount, onCart, onAccount, onShop, onAdd, onAdmin, logout }: { user: UserView; theme: 'light' | 'dark'; toggleTheme: () => void; cartCount: number; onCart: () => void; onAccount: () => void; onShop: () => void; onAdd: () => void; onAdmin: () => void; logout: () => void }) {
+function Header({ user, theme, toggleTheme, cartCount, onCart, onAccount, onShop, onArtists, onCollections, onAdd, onAdmin, logout }: { user: UserView; theme: 'light' | 'dark'; toggleTheme: () => void; cartCount: number; onCart: () => void; onAccount: () => void; onShop: () => void; onArtists: () => void; onCollections: () => void; onAdd: () => void; onAdmin: () => void; logout: () => void }) {
   const [menu, setMenu] = useState(false)
-  return <header className="site-header"><Logo /><nav><button type="button" onClick={onShop}>Obras</button><button type="button" onClick={onShop}>Artistas</button><button type="button" onClick={onShop}>Coleções</button></nav><div className="header-actions">
+  return <header className="site-header"><Logo /><nav><button type="button" onClick={onShop}>Obras</button><button type="button" onClick={onArtists}>Artistas</button><button type="button" onClick={onCollections}>Coleções</button></nav><div className="header-actions">
     {user.role === 'artist' && user.artistStatus === 'approved' && <Button kind="gold" onClick={onAdd}><Icon name="plus" size={16} /> Adicionar arte</Button>}
     {user.role === 'admin' && <Button kind="outline" onClick={onAdmin}>Painel ADM</Button>}
     <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} /><span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span></button>
@@ -478,11 +512,11 @@ function Header({ user, theme, toggleTheme, cartCount, onCart, onAccount, onShop
   </div></header>
 }
 
-function Shop({ user, artworks, total, filter, setFilter, favorite, toggleFavorite, addCart, select, onAdd }: { user: UserView; artworks: ArtworkView[]; total: number; filter: string; setFilter: (filter: string) => void; favorite: string[]; toggleFavorite: (id: string) => void; addCart: (art: ArtworkView) => void; select: (art: ArtworkView) => void; onAdd: () => void }) {
+function Shop({ user, artworks, total, filter, setFilter, favorite, toggleFavorite, artistFilter, clearArtist, addCart, select, onAdd }: { artistFilter: { id: string; name: string } | null; clearArtist: () => void; user: UserView; artworks: ArtworkView[]; total: number; filter: string; setFilter: (filter: string) => void; favorite: string[]; toggleFavorite: (id: string) => void; addCart: (art: ArtworkView) => void; select: (art: ArtworkView) => void; onAdd: () => void }) {
   return <main><section className="shop-hero"><Image src="https://images.unsplash.com/photo-1618331833071-ce81bd50d300?auto=format&fit=crop&w=1800&q=90" alt="Pintura abstrata azul, branca e amarela" fill priority sizes="100vw" /><div className="hero-overlay" /><div className="hero-copy"><p className="eyebrow">Curadoria de setembro</p><h1>Arte que transforma<br />o jeito de <em>habitar.</em></h1><p>Obras originais, histórias singulares e artistas de todo o Brasil.</p><Button kind="gold" onClick={() => document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' })}>Explorar curadoria</Button></div></section>
     {user.role === 'artist' && <section className={`artist-status status-${user.artistStatus}`}><div><span className="status-dot" /><p><strong>{user.artistStatus === 'approved' ? `Bem-vindo ao seu ateliê, ${user.name.split(' ')[0]}` : 'Seu perfil está em análise'}</strong>{user.artistStatus === 'approved' ? 'Sua vitrine está ativa e pronta para receber novas obras.' : 'Nossa curadoria responderá em até 48 horas. Enquanto isso, explore a loja.'}</p></div>{user.artistStatus === 'approved' && <Button kind="outline" onClick={onAdd}>Publicar nova obra</Button>}</section>}
-    <section className="catalog" id="catalogo"><div className="catalog-top"><div><p className="eyebrow">Descubra sua próxima obra</p><h2>Galeria em destaque</h2></div><p>{artworks.length} de {total || artworks.length} obras</p></div><div className="filters">{filters.map((item) => <button type="button" key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item}</button>)}</div>
-      {artworks.length ? <div className="art-grid">{artworks.map((art, index) => <article className={`art-card ${index === 0 ? 'featured-card' : ''}`} key={art.id}><button type="button" className="art-image" onClick={() => select(art)}><Image src={art.image} alt={art.title} fill sizes="(max-width: 700px) 50vw, 25vw" /><span>Ver detalhes</span></button><button type="button" className={`favorite ${favorite.includes(art.id) ? 'active' : ''}`} onClick={() => toggleFavorite(art.id)} aria-label="Favoritar obra"><Icon name="heart" size={18} /></button><div className="art-meta"><div><p>{art.artistName}</p><h3>{art.title}</h3><span>{art.technique}{art.width && art.height ? ` · ${art.width} × ${art.height} cm` : ''}</span></div><div><strong>{currency(art.price)}</strong><button type="button" onClick={() => addCart(art)} aria-label="Adicionar ao carrinho"><Icon name="plus" size={16} /></button></div></div></article>)}</div> : <div className="empty-state"><Icon name="art" size={40} /><h3>Nenhuma obra nesta técnica</h3><p>Experimente outro filtro para continuar explorando.</p><Button kind="outline" onClick={() => setFilter('Todos')}>Ver todas</Button></div>}
+    <section className="catalog" id="catalogo"><div className="catalog-top"><div><p className="eyebrow">Descubra sua próxima obra</p><h2>Galeria em destaque</h2></div><p>{artworks.length} de {total || artworks.length} obras</p></div><div className="filters">{[...filters, 'Favoritos'].map((item) => <button type="button" key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item === 'Favoritos' ? `♥ Favoritos (${favorite.length})` : item}</button>)}</div>{artistFilter && <p className="artist-filter">Mostrando as obras de <strong>{artistFilter.name}</strong> <button type="button" onClick={clearArtist}>Ver todos os artistas ✕</button></p>}
+      {artworks.length ? <div className="art-grid">{artworks.map((art, index) => <article className={`art-card ${index === 0 ? 'featured-card' : ''}`} key={art.id}><button type="button" className="art-image" onClick={() => select(art)}><Image src={art.image} alt={art.title} fill sizes="(max-width: 700px) 50vw, 25vw" /><span>Ver detalhes</span></button><button type="button" className={`favorite ${favorite.includes(art.id) ? 'active' : ''}`} onClick={() => toggleFavorite(art.id)} aria-label="Favoritar obra"><Icon name="heart" size={18} /></button><div className="art-meta"><div><p>{art.artistName}</p><h3>{art.title}</h3><span>{art.technique}{art.width && art.height ? ` · ${art.width} × ${art.height} cm` : ''}</span></div><div><strong>{currency(art.price)}</strong><button type="button" onClick={() => addCart(art)} aria-label="Adicionar ao carrinho"><Icon name="plus" size={16} /></button></div></div></article>)}</div> : <div className="empty-state"><Icon name="art" size={40} /><h3>{filter === 'Favoritos' ? 'Nenhuma obra favorita ainda' : 'Nenhuma obra encontrada'}</h3><p>{filter === 'Favoritos' ? 'Toque no coração de uma obra para guardá-la aqui.' : 'Experimente outro filtro para continuar explorando.'}</p><Button kind="outline" onClick={() => { setFilter('Todos'); clearArtist() }}>Ver todas</Button></div>}
     </section>
   </main>
 }
@@ -780,7 +814,7 @@ function PersonalPanel({ user, onSaved }: { user: UserView; onSaved?: () => void
     const data = new FormData(event.currentTarget)
     const field = (name: string) => String(data.get(name) ?? '')
     setBusy(true)
-    const result = await updateProfileAction({ name: field('name'), phone: field('phone'), city: field('city'), state: field('state'), bio: field('bio') })
+    const result = await updateProfileAction({ name: field('name'), phone: field('phone'), city: field('city'), state: field('state'), bio: field('bio'), birthDate: field('birthDate') })
     setBusy(false)
     setNotice({ text: result.message, error: !result.ok })
     if (result.ok) onSaved?.()
@@ -789,7 +823,7 @@ function PersonalPanel({ user, onSaved }: { user: UserView; onSaved?: () => void
   return <><h2>Dados pessoais</h2><p>Mantenha suas informações atualizadas. O e-mail é o seu login e não pode ser alterado por aqui.</p>
     <form className="form-stack" onSubmit={(event) => void save(event)}>
       <div className="form-grid"><Field label="Nome completo" name="name" defaultValue={user.name} required /><Field label="Celular (com DDD)" name="phone" type="tel" defaultValue={user.phone ?? ''} placeholder="(11) 99999-9999" /></div>
-      <div className="form-grid"><Field label="Cidade" name="city" defaultValue={user.city} /><Field label="Estado (UF)" name="state" defaultValue={user.state ?? ''} placeholder="SP" /></div>
+      <div className="form-grid"><Field label="Data de nascimento" name="birthDate" type="date" defaultValue={user.birthDate ?? ''} /><Field label="Cidade" name="city" defaultValue={user.city} /></div><div className="form-grid"><Field label="Estado (UF)" name="state" defaultValue={user.state ?? ''} placeholder="SP" /><span /></div>
       {user.role === 'artist' && <label className="field"><span>Sua pesquisa artística</span><textarea name="bio" rows={5} defaultValue={user.bio ?? ''} required minLength={60} maxLength={2000} /></label>}
       <div className="form-grid"><label className="field"><span>E-mail</span><input value={user.email} readOnly disabled /></label><label className="field"><span>Perfil</span><input value={user.role === 'buyer' ? 'Comprador' : user.role === 'artist' ? 'Artista' : 'Administrador'} readOnly disabled /></label></div>
       {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
@@ -883,6 +917,89 @@ function SecurityPanel() {
       {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
       <div><Button type="submit" kind="gold" disabled={busy}>{busy ? 'Salvando…' : 'Trocar senha'}</Button></div>
     </form></>
+}
+
+function ForgotPassword({ back }: { back: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+
+  async function send(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    const result = await forgotPasswordAction(String(new FormData(event.currentTarget).get('email') ?? ''))
+    setBusy(false)
+    setNotice({ text: result.message, error: !result.ok })
+  }
+
+  return <main className="auth-simple"><section><Logo /><p className="eyebrow">Recuperar acesso</p><h1>Esqueceu a senha?</h1><p>Informe o e-mail da sua conta. Enviaremos um link para você criar uma nova senha.</p>
+    <form className="form-stack" onSubmit={(event) => void send(event)}>
+      <label className="field"><span>E-mail</span><input name="email" type="email" autoComplete="email" placeholder="seu@email.com" required /></label>
+      {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+      <Button type="submit" kind="gold" disabled={busy}>{busy ? 'Enviando…' : 'Enviar link'}</Button>
+      <button type="button" className="link-button" onClick={back}>← Voltar para o login</button>
+    </form></section></main>
+}
+
+function ResetPassword({ token, done }: { token: string; done: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [finished, setFinished] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const password = String(data.get('newPassword') ?? '')
+    if (password !== String(data.get('confirmPassword') ?? '')) { setNotice({ text: 'A confirmação não é igual à nova senha.', error: true }); return }
+    setBusy(true)
+    const result = await resetPasswordAction(token, password)
+    setBusy(false)
+    setNotice({ text: result.message, error: !result.ok })
+    if (result.ok) setFinished(true)
+  }
+
+  return <main className="auth-simple"><section><Logo /><p className="eyebrow">Recuperar acesso</p><h1>Crie uma nova senha</h1>
+    {finished ? <><p>{notice?.text}</p><Button kind="gold" onClick={done}>Ir para o login</Button></> : <form className="form-stack" onSubmit={(event) => void save(event)}>
+      <label className="field"><span>Nova senha (mínimo 8 caracteres)</span><input name="newPassword" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></label>
+      <label className="field"><span>Repita a nova senha</span><input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></label>
+      {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+      <Button type="submit" kind="gold" disabled={busy}>{busy ? 'Salvando…' : 'Salvar nova senha'}</Button>
+      <button type="button" className="link-button" onClick={done}>← Voltar para o login</button>
+    </form>}</section></main>
+}
+
+function ArtistsPage({ openArtist }: { openArtist: (artist: PublicArtist) => void }) {
+  const [artists, setArtists] = useState<PublicArtist[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const load = useCallback(async () => {
+    try {
+      setArtists(await listPublicArtists())
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  return <main className="browse-page"><p className="eyebrow">Quem cria</p><h1>Artistas</h1><p className="browse-intro">Conheça quem pinta, desenha e cria as obras da Nambá Galerie.</p>
+    {failed ? <DataError retry={() => void load()} /> : !artists ? <p>Carregando…</p> : artists.length ? <div className="browse-grid">{artists.map((artist) => <article className="browse-card" key={artist.id}>
+      <div className="browse-cover">{artist.cover ? <Image src={artist.cover} alt={`Obra de ${artist.name}`} fill sizes="(max-width: 700px) 100vw, 33vw" /> : <span>{artist.name.charAt(0)}</span>}</div>
+      <div className="browse-body"><h2>{artist.name}</h2><small>{[artist.city, artist.state].filter(Boolean).join(' · ') || 'Brasil'}{artist.artStyle ? ` · ${artist.artStyle}` : ''}</small>{artist.bio && <p>{artist.bio.length > 140 ? `${artist.bio.slice(0, 140)}…` : artist.bio}</p>}<Button kind="outline" onClick={() => openArtist(artist)}>Ver {artist.works} {artist.works === 1 ? 'obra' : 'obras'}</Button></div>
+    </article>)}</div> : <div className="account-empty"><span><Icon name="art" size={25} /></span><h3>Ainda não há artistas com obras à venda</h3><p>Volte em breve.</p></div>}
+  </main>
+}
+
+function CollectionsPage({ artworks, openCollection }: { artworks: ArtworkView[]; openCollection: (technique: string) => void }) {
+  const collections = filters.slice(1).map((technique) => {
+    const works = artworks.filter((art) => art.status === 'published' && art.technique === technique)
+    return { technique, works, cover: works[0]?.image ?? '', from: works.length ? Math.min(...works.map((art) => art.price)) : 0 }
+  }).filter((collection) => collection.works.length)
+
+  return <main className="browse-page"><p className="eyebrow">Por técnica</p><h1>Coleções</h1><p className="browse-intro">Explore as obras reunidas pela técnica usada em cada uma.</p>
+    {collections.length ? <div className="browse-grid">{collections.map((collection) => <article className="browse-card" key={collection.technique}>
+      <div className="browse-cover">{collection.cover ? <Image src={collection.cover} alt={`Coleção ${collection.technique}`} fill sizes="(max-width: 700px) 100vw, 33vw" /> : <span>{collection.technique.charAt(0)}</span>}</div>
+      <div className="browse-body"><h2>{collection.technique}</h2><small>{collection.works.length} {collection.works.length === 1 ? 'obra' : 'obras'} · a partir de {currency(collection.from)}</small><Button kind="outline" onClick={() => openCollection(collection.technique)}>Ver coleção</Button></div>
+    </article>)}</div> : <div className="account-empty"><span><Icon name="art" size={25} /></span><h3>Nenhuma coleção disponível</h3><p>Quando houver obras à venda, as coleções aparecem aqui.</p></div>}
+  </main>
 }
 
 function DataError({ retry }: { retry: () => void }) {

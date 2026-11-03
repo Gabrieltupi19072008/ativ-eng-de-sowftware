@@ -2,7 +2,7 @@
 //
 // Por padrão fala com a API em Python (VITE_API_URL, padrão http://localhost:8000).
 // Com VITE_USE_MOCK=true usa a versão simulada no navegador (src/mock.ts), útil sem back-end.
-import type { AdminOrderView, Address, SavedAddress, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, PublicArtist, SavedAddress, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './GalerieApp'
 import { DEMO_ACCOUNTS } from './demoAccounts'
 import * as mock from './mock'
 
@@ -12,7 +12,7 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 // order e unavailable só vêm nas ações de pedido (unavailable = ids de obras que já não estão à venda)
 export type ActionResult = { ok: boolean; message: string; field?: string; order?: OrderView; unavailable?: string[] }
 export type ArtworkInput = { title: string; technique: string; description: string; price: string; width: string; height: string; year: string; submitType: 'publish' | 'draft' }
-export type ProfileInput = { name: string; phone: string; city: string; state: string; bio: string }
+export type ProfileInput = { name: string; phone: string; city: string; state: string; bio: string; birthDate: string }
 export type OrderInput = { items: string[]; address: Address; paymentMethod: PaymentMethod }
 
 const OFFLINE: ActionResult = { ok: false, message: 'Não foi possível conectar ao servidor. Tente novamente em instantes.' }
@@ -124,6 +124,12 @@ const apiSaveAddress = (address: Address, id?: string) => id
   : action('/me/addresses', { method: 'POST', ...json(address) })
 const apiDeleteAddress = (id: string) => action(`/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
+const apiForgotPassword = (email: string) => action('/auth/forgot-password', { method: 'POST', ...json({ email }) })
+const apiResetPassword = (token: string, newPassword: string) => action('/auth/reset-password', { method: 'POST', ...json({ token, newPassword }) })
+const apiListFavorites = async () => readJson<string[]>(await call('/favorites'))
+const apiSetFavorite = (id: string, on: boolean) => action(`/favorites/${encodeURIComponent(id)}`, { method: on ? 'POST' : 'DELETE' })
+const apiListPublicArtists = async () => readJson<PublicArtist[]>(await call('/artists/public'))
+
 const apiShipOrder = (id: string, trackingCode: string) => action(`/orders/${encodeURIComponent(id)}/ship`, { method: 'POST', ...json({ trackingCode }) })
 const apiDeliverOrder = (id: string) => action(`/orders/${encodeURIComponent(id)}/deliver`, { method: 'POST' })
 
@@ -158,3 +164,8 @@ export const changePasswordAction: (current: string, next: string) => Promise<Ac
 export const listAddresses: () => Promise<SavedAddress[]> = USE_MOCK ? mock.listAddresses : apiListAddresses
 export const saveAddressAction: (address: Address, id?: string) => Promise<ActionResult> = USE_MOCK ? mock.saveAddressAction : apiSaveAddress
 export const deleteAddressAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.deleteAddressAction : apiDeleteAddress
+export const forgotPasswordAction: (email: string) => Promise<ActionResult> = USE_MOCK ? mock.forgotPasswordAction : apiForgotPassword
+export const resetPasswordAction: (token: string, newPassword: string) => Promise<ActionResult> = USE_MOCK ? mock.resetPasswordAction : apiResetPassword
+export const listFavorites: () => Promise<string[]> = USE_MOCK ? mock.listFavorites : apiListFavorites
+export const setFavoriteAction: (id: string, on: boolean) => Promise<ActionResult> = USE_MOCK ? mock.setFavoriteAction : apiSetFavorite
+export const listPublicArtists: () => Promise<PublicArtist[]> = USE_MOCK ? mock.listPublicArtists : apiListPublicArtists

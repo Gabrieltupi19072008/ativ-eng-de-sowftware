@@ -13,7 +13,7 @@ from errors import ApiError
 from models import Cliente, Endereco, Pedido
 from security import hash_password, login_limiter, verify_password
 from serializers import active_addresses, address_view, user_view
-from validators import clean_text
+from validators import clean_text, optional_birth_date
 
 router = APIRouter(tags=["account"])
 
@@ -26,6 +26,7 @@ class ProfileIn(BaseModel):
     city: str = Field(default="", max_length=120)
     state: str = Field(default="", max_length=10)
     bio: str = Field(default="", max_length=5000)
+    birthDate: str = Field(default="", max_length=20)
 
 
 @router.patch("/me")
@@ -37,6 +38,7 @@ def update_profile(body: ProfileIn, user: Cliente = Depends(current_user), db: S
     phone = re.sub(r"\D", "", body.phone)
     if phone and not 10 <= len(phone) <= 11:
         raise ApiError(400, "Informe o celular com DDD (ex.: (11) 99999-9999).", "phone")
+    birth_date = optional_birth_date(body.birthDate)
     city, state = clean_text(body.city), clean_text(body.state).upper()
     if len(city) > 80:
         raise ApiError(400, "Informe uma cidade válida.", "city")
@@ -48,6 +50,7 @@ def update_profile(body: ProfileIn, user: Cliente = Depends(current_user), db: S
             raise ApiError(400, "Conte sobre sua pesquisa artística (de 60 a 2000 caracteres).", "bio")
         user.biografia = bio
     user.nome, user.telefone, user.cidade, user.estado = name, phone or None, city or None, state or None
+    user.data_nascimento = birth_date
     db.commit()
     return {"ok": True, "message": "Dados atualizados.", "user": user_view(user)}
 

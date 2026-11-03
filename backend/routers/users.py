@@ -11,7 +11,7 @@ from models import Cliente, Endereco, PortfolioImagem
 from security import hash_password, set_session_cookie
 from serializers import ROLE_IN, user_view
 from uploads import only_filled, read_images, remove_images, save_images
-from validators import clean_text, valid_cpf, valid_email
+from validators import clean_text, optional_birth_date, valid_cpf, valid_email
 
 router = APIRouter(tags=["users"])
 
@@ -46,6 +46,7 @@ def register(
     password: str = Form(""),
     cpf: str = Form(""),
     phone: str = Form(""),
+    birthDate: str = Form(""),
     cep: str = Form(""),
     street: str = Form(""),
     number: str = Form(""),
@@ -70,6 +71,7 @@ def register(
     if not 8 <= len(password) <= 128:
         raise ApiError(400, "A senha deve ter entre 8 e 128 caracteres.", "password")
     cpf_digits = valid_cpf(cpf)
+    birth_date = optional_birth_date(birthDate)
     phone_digits = re.sub(r"\D", "", phone)
     if phone_digits and not 10 <= len(phone_digits) <= 11:
         raise ApiError(400, "Informe o celular com DDD (ex.: (11) 99999-9999).", "phone")
@@ -95,7 +97,7 @@ def register(
     urls = save_images(images)
     try:
         cliente = Cliente(
-            nome=name, email=email, senha_hash=hash_password(password), cpf=cpf_digits, telefone=phone_digits or None,
+            nome=name, email=email, senha_hash=hash_password(password), cpf=cpf_digits, telefone=phone_digits or None, data_nascimento=birth_date,
             papel=ROLE_IN[role], status_artista="PENDENTE" if role == "artist" else "NAO_APLICAVEL",
             cidade=(city or None), estado=state.upper() or None,
             estilo_artistico=art_style, biografia=bio,

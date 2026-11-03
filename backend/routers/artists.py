@@ -3,14 +3,15 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from database import get_db
 from deps import require_admin
 from errors import ApiError
-from models import Cliente
-from serializers import STATUS_IN, candidate_view
+from models import Cliente, Estoque, Produto
+from orders_service import expire_orders
+from serializers import STATUS_IN, absolute_url, candidate_view
 
 router = APIRouter(tags=["artists"])
 
@@ -18,6 +19,35 @@ router = APIRouter(tags=["artists"])
 class ReviewIn(BaseModel):
     decision: Literal["approved", "rejected"]
     note: str = Field(default="", max_length=500)
+
+
+@router.get("/artists/public")
+def public_artists(db: Session = Depends(get_db)):
+    """Página "Artistas" da loja: artistas aprovados que têm obra à venda. Só dados públicos (nada de e-mail ou CPF)."""
+    expire_orders(db)  # obras de pedidos vencidos voltam à venda
+    on_sale = (Produto.status == "PUBLICADA") & (Produto.ativo == "S") & (Estoque.quantidade > 0)
+    totals = (
+        select(Produto.id_artista.label("id_artista"), func.count(Produto.id_produto).label("works"), func.max(Produto.id_produto).label("latest"))
+        .join(Estoque, Estoque.id_produto == Produto.id_produto)
+        .where(on_sale)
+        .group_by(Produto.id_artista)
+        .subquery()
+    )
+    rows = db.execute(
+        select(Cliente, totals.c.works, totals.c.latest)
+        .join(totals, totals.c.id_artista == Cliente.id_cliente)
+        .where(Cliente.papel == "ARTISTA", Cliente.status_artista == "APROVADO", Cliente.ativo == "S")
+        .order_by(totals.c.works.desc(), Cliente.nome)
+    ).all()
+    covers = {p.id_produto: p.url_imagem for p in db.scalars(select(Produto).where(Produto.id_produto.in_([latest for _a, _n, latest in rows])))} if rows else {}
+    return [
+        {
+            "id": str(artist.id_cliente), "name": artist.nome, "city": artist.cidade or "", "state": artist.estado or "",
+            "artStyle": artist.estilo_artistico or "", "bio": artist.biografia or "", "works": count,
+            "cover": absolute_url(covers[latest]) if latest in covers else "",
+        }
+        for artist, count, latest in rows
+    ]
 
 
 @router.get("/artists")

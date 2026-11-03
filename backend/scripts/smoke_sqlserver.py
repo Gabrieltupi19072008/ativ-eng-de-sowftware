@@ -32,7 +32,7 @@ def cleanup():
     from sqlalchemy import delete, select
 
     from database import SessionLocal
-    from models import Cliente, Endereco, Entrega, Estoque, ItemPedido, Pagamento, Pedido, PortfolioImagem, Produto, ProdutoCategoria, ProdutoImagem
+    from models import Cliente, Endereco, Entrega, Estoque, Favorito, RedefinicaoSenha, ItemPedido, Pagamento, Pedido, PortfolioImagem, Produto, ProdutoCategoria, ProdutoImagem
 
     with SessionLocal() as db:
         users = list(db.scalars(select(Cliente.id_cliente).where(Cliente.email.like("%@example.com"))))
@@ -40,6 +40,8 @@ def cleanup():
             return
         products = list(db.scalars(select(Produto.id_produto).where(Produto.id_artista.in_(users))))
         orders = list(db.scalars(select(Pedido.id_pedido).where(Pedido.id_cliente.in_(users))))
+        db.execute(delete(Favorito).where((Favorito.id_cliente.in_(users)) | (Favorito.id_produto.in_(products))))
+        db.execute(delete(RedefinicaoSenha).where(RedefinicaoSenha.id_cliente.in_(users)))
         db.execute(delete(Entrega).where(Entrega.id_pedido.in_(orders)))
         db.execute(delete(Pagamento).where(Pagamento.id_pedido.in_(orders)))
         db.execute(delete(ItemPedido).where((ItemPedido.id_pedido.in_(orders)) | (ItemPedido.id_produto.in_(products))))
@@ -212,6 +214,20 @@ def main():
     fresh = client()
     check("login com a senha antiga falha e com a nova entra", fresh.post("/auth/login", json={"email": f"buyer2{stamp}@example.com", "password": "senha-forte-1"}).status_code == 401
           and fresh.post("/auth/login", json={"email": f"buyer2{stamp}@example.com", "password": "outra-senha-9"}).status_code == 200)
+
+    # favoritos, artistas públicos, data de nascimento e recuperação de senha
+    fav = next(x for x in public_ids())
+    check("favoritar obra", buyer2.post(f"/favorites/{fav}").status_code == 200 and buyer2.post(f"/favorites/{fav}").status_code == 200)
+    check("favoritos listam a obra", buyer2.get("/favorites").json() == [fav])
+    check("desfavoritar", buyer2.delete(f"/favorites/{fav}").status_code == 200 and buyer2.get("/favorites").json() == [])
+    pub = client().get("/artists/public")
+    check("artistas públicos sem dados privados", pub.status_code == 200 and len(pub.json()) >= 1 and all("email" not in a and "cpf" not in a for a in pub.json()), pub.text[:80])
+    check("data de nascimento salva", buyer2.patch("/me", json={"name": "Comprador Dois Editado", "birthDate": "1995-03-20"}).json()["user"]["birthDate"] == "1995-03-20")
+    check("data futura recusada", buyer2.patch("/me", json={"name": "Comprador Dois Editado", "birthDate": "2999-01-01"}).status_code == 400)
+    known = client().post("/auth/forgot-password", json={"email": f"buyer2{stamp}@example.com"})
+    unknown = client().post("/auth/forgot-password", json={"email": f"ninguem{stamp}@example.com"})
+    check("esqueci a senha: mesma resposta para e-mail existente e inexistente", known.status_code == unknown.status_code == 200 and known.json() == unknown.json())
+    check("link inválido de redefinição é recusado", client().post("/auth/reset-password", json={"token": "inventado", "newPassword": "senha-nova-123"}).status_code == 400)
 
     # 6) logout encerra a sessão
     buyer.post("/auth/logout")

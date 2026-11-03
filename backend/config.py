@@ -37,6 +37,16 @@ MAX_ORDER_ITEMS = 10
 FAKE_PAYMENTS = _bool("FAKE_PAYMENTS", ENVIRONMENT.lower() == "development") and ENVIRONMENT.lower() != "production"
 
 
+# Recuperação de senha. Sem SMTP_HOST o e-mail não é enviado: em desenvolvimento o link aparece no terminal da API.
+FRONTEND_URL = os.getenv("FRONTEND_URL", CORS_ORIGINS[0] if CORS_ORIGINS else "http://localhost:5173").rstrip("/")
+RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "60"))
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER or "nao-responda@nambagalerie.com")
+
+
 def jwt_secret() -> str:
     # Sem segredo definido a API não sobe: um valor padrão permitiria forjar logins.
     if len(JWT_SECRET) < 32:

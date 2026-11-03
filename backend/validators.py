@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from email_validator import EmailNotValidError, validate_email
@@ -59,3 +60,16 @@ def optional_dimension(value: str | None, field: str) -> Decimal | None:
     if not number.is_finite() or number <= 0 or number > 1000:
         raise ApiError(400, "A medida deve ficar entre 0 e 1000 cm.", field)
     return number.quantize(Decimal("0.01"))
+
+
+def optional_birth_date(value: str | None, field: str = "birthDate") -> date | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    try:
+        born = date.fromisoformat(text)
+    except ValueError:
+        raise ApiError(400, "Informe uma data de nascimento válida.", field)
+    if born > date.today() or born.year < date.today().year - 120:
+        raise ApiError(400, "Informe uma data de nascimento válida.", field)
+    return born

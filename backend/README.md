@@ -8,11 +8,11 @@ Login e sessão, cadastro (comprador e artista com portfólio), vitrine de obras
 ## Rodar pela primeira vez
 
 1. **Banco de dados** (SQL Server). Execute, nesta ordem, os scripts da pasta `sql/`:
-   `00_criar_banco.sql` → `01_schema.sql` → `02_ajustes_front.sql` → `03_pedidos.sql` → `04_conta.sql`
+   `00_criar_banco.sql` → `01_schema.sql` → `02_ajustes_front.sql` → `03_pedidos.sql` → `04_conta.sql` → `05_senha_favoritos.sql`
    (o `02` e o `03` podem ser rodados de novo sem problema). Pelo terminal:
    ```bash
    cd sql
-   for f in 00_criar_banco 01_schema 02_ajustes_front 03_pedidos 04_conta; do sqlcmd -I -S localhost,1433 -U sa -P 'SUA_SENHA' -C -b -i $f.sql; done
+   for f in 00_criar_banco 01_schema 02_ajustes_front 03_pedidos 04_conta 05_senha_favoritos; do sqlcmd -I -S localhost,1433 -U sa -P 'SUA_SENHA' -C -b -i $f.sql; done
    ```
    O `-I` é importante: sem ele o `sqlcmd` falha ao mexer na tabela `cliente` (o índice único do CPF exige `QUOTED_IDENTIFIER` ligado). A API não tem esse problema.
    - **No Mac não existe SQL Server nativo.** Rode num contêiner. Sem precisar de senha de administrador:
@@ -75,6 +75,9 @@ Erros sempre vêm como `{ "ok": false, "message": "...", "field": "campo" }` (o 
 | `GET /admin/orders`, `GET /admin/reports` | admin | Todos os pedidos e os números dos relatórios |
 | `PATCH /artworks/{id}`, `DELETE /artworks/{id}` | artista dono | Edita (ou salva como rascunho) e exclui; obra reservada/vendida não muda; excluir só se nunca esteve em pedido |
 | `PATCH /artworks/{id}/visibility` | admin | Despublica/republica uma obra (`{visible: bool}`) |
+| `POST /auth/forgot-password`, `POST /auth/reset-password` | todos | "Esqueci minha senha": envia um link (vale 60 min, uso único, guardado só como hash). Resposta igual exista a conta ou não; 5 pedidos/15 min. Sem `SMTP_HOST` o e-mail aparece no terminal da API |
+| `GET /favorites`, `POST/DELETE /favorites/{id}` | logado | Obras favoritas da pessoa |
+| `GET /artists/public` | todos | Artistas aprovados com obra à venda (só dados públicos), para a página "Artistas" |
 | `PATCH /me`, `POST /me/password` | logado | Dados pessoais e troca de senha (exige a senha atual; 5 erros bloqueiam por 15 min) |
 | `GET/POST /me/addresses`, `PATCH/DELETE /me/addresses/{id}` | logado | Endereços de entrega (excluir só esconde; editar endereço já usado em pedido cria um novo) |
 | `GET /health` | todos | Confere a conexão com o banco |

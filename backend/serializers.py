@@ -45,6 +45,7 @@ def user_view(c: Cliente) -> dict:
         "state": c.estado or "",
         "phone": c.telefone or "",
         "bio": c.biografia or "",
+        "birthDate": c.data_nascimento.isoformat() if c.data_nascimento else "",
     }
     if addresses:
         view["address"] = address_view(addresses[0])

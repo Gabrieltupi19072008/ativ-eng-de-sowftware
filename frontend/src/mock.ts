@@ -1,7 +1,7 @@
 // Modo simulado: tudo no navegador (localStorage), sem back-end.
 // Ligado com VITE_USE_MOCK=true. Tem as mesmas funções de api.ts, que escolhe qual usar.
 import { seedArtworks, seedCandidates } from './data/seed'
-import type { AdminOrderView, Address, SavedAddress, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, PublicArtist, SavedAddress, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
 
 import type { ActionResult, ArtworkInput, OrderInput, ProfileInput } from './api'
 import { DEMO_ACCOUNTS } from './demoAccounts'
@@ -16,11 +16,12 @@ type StoredUser = UserView & {
   reviewNote?: string
   phone?: string
   bio?: string
+  birthDate?: string
   addresses?: SavedAddress[]
 }
 type StoredArtwork = ArtworkView & { ownerId?: string }
 type StoredOrder = OrderView & { ownerId: string }
-type Db = { users: StoredUser[]; artworks: StoredArtwork[]; orders?: StoredOrder[] }
+type Db = { users: StoredUser[]; artworks: StoredArtwork[]; orders?: StoredOrder[]; favorites?: Record<string, string[]>; resetTokens?: { token: string; userId: string }[] }
 
 const DB_KEY = 'namba-db-v2'
 const SESSION_KEY = 'namba-session-v1'
@@ -64,7 +65,7 @@ function writeDb(db: Db) {
 
 const getSession = () => window.localStorage.getItem(SESSION_KEY)
 const text = (data: FormData, key: string) => String(data.get(key) ?? '').trim()
-const publicUser = ({ id, name, email, role, artistStatus, city, state, phone, bio, address, addresses }: StoredUser): UserView => ({ id, name, email, role, artistStatus, city, state, phone, bio, address: addresses ? addresses[0] : address })
+const publicUser = ({ id, name, email, role, artistStatus, city, state, phone, bio, birthDate, address, addresses }: StoredUser): UserView => ({ id, name, email, role, artistStatus, city, state, phone, bio, birthDate, address: addresses ? addresses[0] : address })
 
 // Reduz as imagens enviadas para caberem no localStorage.
 function fileToDataUrl(file: File, maxSize = 1200): Promise<string> {
@@ -482,7 +483,7 @@ export async function updateProfileAction(input: ProfileInput): Promise<ActionRe
   const phone = input.phone.replace(/\D/g, '')
   if (phone && (phone.length < 10 || phone.length > 11)) return { ok: false, message: 'Informe o celular com DDD (ex.: (11) 99999-9999).', field: 'phone' }
   if (user.role === 'artist' && input.bio.trim().length < 60) return { ok: false, message: 'Conte sobre sua pesquisa artística (de 60 a 2000 caracteres).', field: 'bio' }
-  Object.assign(user, { name: input.name.trim(), phone, city: input.city.trim(), state: input.state.trim().toUpperCase() })
+  Object.assign(user, { name: input.name.trim(), phone, city: input.city.trim(), state: input.state.trim().toUpperCase(), birthDate: input.birthDate })
   if (user.role === 'artist') user.bio = input.bio.trim()
   writeDb(db)
   return { ok: true, message: 'Dados atualizados.' }
@@ -539,4 +540,56 @@ export async function deleteAddressAction(id: string): Promise<ActionResult> {
   user.addresses = user.addresses.filter((a) => a.id !== id)
   writeDb(db)
   return { ok: true, message: 'Endereço excluído.' }
+}
+
+// ---------- recuperar senha, favoritos e artistas (simulado) ----------
+export async function forgotPasswordAction(email: string): Promise<ActionResult> {
+  const db = readDb()
+  const user = db.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+  let hint = ''
+  if (user) {
+    const token = `demo-${Date.now()}`
+    db.resetTokens = [...(db.resetTokens ?? []).filter((t) => t.userId !== user.id), { token, userId: user.id }]
+    writeDb(db)
+    hint = ` (modo simulado: nenhum e-mail é enviado; use o link ${window.location.origin}/?reset=${token})`
+  }
+  return { ok: true, message: `Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha.${hint}` }
+}
+
+export async function resetPasswordAction(token: string, newPassword: string): Promise<ActionResult> {
+  const db = readDb()
+  if (newPassword.length < 8) return { ok: false, message: 'A nova senha deve ter entre 8 e 128 caracteres.', field: 'newPassword' }
+  const entry = db.resetTokens?.find((t) => t.token === token)
+  const user = db.users.find((u) => u.id === entry?.userId)
+  if (!entry || !user) return { ok: false, message: 'Este link é inválido ou já expirou. Peça um novo em "Esqueci minha senha".', field: 'token' }
+  user.password = newPassword
+  db.resetTokens = db.resetTokens!.filter((t) => t.userId !== user.id)
+  writeDb(db)
+  return { ok: true, message: 'Senha redefinida. Entre com a nova senha.' }
+}
+
+export async function listFavorites(): Promise<string[]> {
+  const me = await currentUser()
+  return me ? readDb().favorites?.[me.id] ?? [] : []
+}
+
+export async function setFavoriteAction(id: string, on: boolean): Promise<ActionResult> {
+  const me = await currentUser()
+  if (!me) return { ok: false, message: 'Faça login para continuar.' }
+  const db = readDb()
+  const favorites = (db.favorites ??= {})
+  const current = (favorites[me.id] ??= [])
+  favorites[me.id] = on ? [...new Set([...current, id])] : current.filter((item) => item !== id)
+  writeDb(db)
+  return { ok: true, message: on ? 'Obra favoritada.' : 'Obra removida dos favoritos.' }
+}
+
+export async function listPublicArtists(): Promise<PublicArtist[]> {
+  const db = readDb()
+  const byArtist = new Map<string, StoredArtwork[]>()
+  for (const art of db.artworks.filter((a) => a.status === 'published')) byArtist.set(art.artistId, [...(byArtist.get(art.artistId) ?? []), art])
+  return [...byArtist.entries()].map(([artistId, works]) => {
+    const user = db.users.find((u) => u.id === artistId)
+    return { id: artistId, name: works[0].artistName, city: user?.city ?? '', state: user?.state ?? '', artStyle: user?.artStyle ?? works[0].technique, bio: user?.bio ?? '', works: works.length, cover: works[0].image }
+  }).sort((a, b) => b.works - a.works || a.name.localeCompare(b.name))
 }

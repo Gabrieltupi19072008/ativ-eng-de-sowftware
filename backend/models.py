@@ -31,6 +31,7 @@ class Cliente(Base):
     observacao_revisao: Mapped[str | None] = mapped_column(String(500))
     id_revisor: Mapped[int | None] = mapped_column(ForeignKey("cliente.id_cliente"))
     data_revisao: Mapped[datetime | None] = mapped_column(DateTime)
+    data_nascimento: Mapped[date | None] = mapped_column(Date)
 
     enderecos: Mapped[list["Endereco"]] = relationship(back_populates="cliente", order_by="Endereco.id_endereco")
     portfolio: Mapped[list["PortfolioImagem"]] = relationship(order_by="PortfolioImagem.ordem")
@@ -167,3 +168,21 @@ class Entrega(Base):
     transportadora: Mapped[str | None] = mapped_column(String(100))
     data_envio: Mapped[date | None] = mapped_column(Date)
     data_entrega: Mapped[date | None] = mapped_column(Date)
+
+
+class Favorito(Base):
+    __tablename__ = "favorito"
+
+    id_cliente: Mapped[int] = mapped_column(ForeignKey("cliente.id_cliente"), primary_key=True)
+    id_produto: Mapped[int] = mapped_column(ForeignKey("produto.id_produto"), primary_key=True)
+    data_criacao: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RedefinicaoSenha(Base):
+    __tablename__ = "redefinicao_senha"
+
+    id_redefinicao: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id_cliente: Mapped[int] = mapped_column(ForeignKey("cliente.id_cliente"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    data_expiracao: Mapped[datetime] = mapped_column(DateTime)
+    usado: Mapped[str] = mapped_column(String(1), server_default="N")
