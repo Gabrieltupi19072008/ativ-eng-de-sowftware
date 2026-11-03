@@ -2,7 +2,7 @@
 //
 // Por padrão fala com a API em Python (VITE_API_URL, padrão http://localhost:8000).
 // Com VITE_USE_MOCK=true usa a versão simulada no navegador (src/mock.ts), útil sem back-end.
-import type { Address, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './GalerieApp'
 import { DEMO_ACCOUNTS } from './demoAccounts'
 import * as mock from './mock'
 
@@ -106,6 +106,10 @@ async function apiListOrders(): Promise<OrderView[]> {
   return readJson<OrderView[]>(await call('/orders'))
 }
 
+const apiListSales = async () => readJson<SaleView[]>(await call('/sales'))
+const apiListAdminOrders = async () => readJson<AdminOrderView[]>(await call('/admin/orders'))
+const apiGetReports = async () => readJson<ReportsView>(await call('/admin/reports'))
+
 const apiCreateOrder = (input: OrderInput) => action('/orders', { method: 'POST', ...json(input) })
 const apiCancelOrder = (id: string) => action(`/orders/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
 const apiSimulatePayment = (id: string) => action(`/orders/${encodeURIComponent(id)}/simulate-payment`, { method: 'POST' })
@@ -124,3 +128,6 @@ export const listOrders: () => Promise<OrderView[]> = USE_MOCK ? mock.listOrders
 export const createOrderAction: (input: OrderInput) => Promise<ActionResult> = USE_MOCK ? mock.createOrderAction : apiCreateOrder
 export const cancelOrderAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.cancelOrderAction : apiCancelOrder
 export const simulatePaymentAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.simulatePaymentAction : apiSimulatePayment
+export const listSales: () => Promise<SaleView[]> = USE_MOCK ? mock.listSales : apiListSales
+export const listAdminOrders: () => Promise<AdminOrderView[]> = USE_MOCK ? mock.listAdminOrders : apiListAdminOrders
+export const getReports: () => Promise<ReportsView> = USE_MOCK ? mock.getReports : apiGetReports

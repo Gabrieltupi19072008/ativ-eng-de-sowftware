@@ -10,7 +10,7 @@ from sqlalchemy import text
 import config
 from database import engine
 from errors import ApiError
-from routers import artists, artworks, auth, orders, users
+from routers import artists, artworks, auth, orders, sales, users
 
 
 @asynccontextmanager
@@ -71,6 +71,7 @@ app.include_router(users.router)
 app.include_router(artworks.router)
 app.include_router(artists.router)
 app.include_router(orders.router)
+app.include_router(sales.router)
 
 
 @app.get("/health")

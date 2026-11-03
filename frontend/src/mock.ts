@@ -1,7 +1,7 @@
 // Modo simulado: tudo no navegador (localStorage), sem back-end.
 // Ligado com VITE_USE_MOCK=true. Tem as mesmas funções de api.ts, que escolhe qual usar.
 import { seedArtworks, seedCandidates } from './data/seed'
-import type { ArtistCandidate, ArtworkView, OrderView, UserView } from './GalerieApp'
+import type { AdminOrderView, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
 
 import type { ActionResult, OrderInput } from './api'
 import { DEMO_ACCOUNTS } from './demoAccounts'
@@ -307,4 +307,77 @@ export async function simulatePaymentAction(orderId: string): Promise<ActionResu
   }
   writeDb(db)
   return { ok: true, message: 'Pagamento simulado com sucesso.', order: publicOrder(order) }
+}
+
+// ---------- vendas e relatórios (simulados) ----------
+const PAID: OrderStatus[] = ['paid', 'shipped', 'delivered']
+
+export async function listSales(): Promise<SaleView[]> {
+  const me = await currentUser()
+  if (!me || me.role === 'buyer') throw new Error('Acesso restrito a artistas')
+  const db = readDb()
+  expireOrders(db)
+  const sales: SaleView[] = []
+  for (const order of [...(db.orders ?? [])].reverse()) {
+    if (order.status === 'cancelled') continue
+    const buyer = db.users.find((u) => u.id === order.ownerId)
+    for (const item of order.items) {
+      const art = db.artworks.find((a) => a.id === item.artworkId)
+      if (me.role === 'artist' && art?.ownerId !== me.id && item.artistName !== me.name) continue
+      sales.push({
+        orderId: order.id, orderNumber: order.number, status: order.status, createdAt: order.createdAt, artworkId: item.artworkId,
+        title: item.title, artistName: item.artistName, image: item.image, price: item.price,
+        buyerName: buyer?.name ?? 'Comprador', buyerCity: buyer?.city ?? '', buyerState: buyer?.state ?? '',
+      })
+    }
+  }
+  return sales
+}
+
+export async function listAdminOrders(): Promise<AdminOrderView[]> {
+  const me = await currentUser()
+  if (me?.role !== 'admin') throw new Error('Acesso restrito')
+  const db = readDb()
+  expireOrders(db)
+  return [...(db.orders ?? [])].reverse().map((order) => {
+    const buyer = db.users.find((u) => u.id === order.ownerId)
+    return { ...publicOrder(order), buyerName: buyer?.name ?? 'Comprador', buyerEmail: buyer?.email ?? '' }
+  })
+}
+
+export async function getReports(): Promise<ReportsView> {
+  const me = await currentUser()
+  if (me?.role !== 'admin') throw new Error('Acesso restrito')
+  const db = readDb()
+  expireOrders(db)
+  const orders = db.orders ?? []
+  const paid = orders.filter((o) => PAID.includes(o.status))
+  const revenue = paid.reduce((sum, o) => sum + o.subtotal, 0)
+  const byArtist = new Map<string, { name: string; sold: number; revenue: number }>()
+  const byTechnique = new Map<string, { technique: string; sold: number; revenue: number }>()
+  for (const order of paid) {
+    for (const item of order.items) {
+      const artist = byArtist.get(item.artistName) ?? { name: item.artistName, sold: 0, revenue: 0 }
+      artist.sold += 1
+      artist.revenue += item.price
+      byArtist.set(item.artistName, artist)
+      const technique = db.artworks.find((a) => a.id === item.artworkId)?.technique ?? 'Sem técnica'
+      const row = byTechnique.get(technique) ?? { technique, sold: 0, revenue: 0 }
+      row.sold += 1
+      row.revenue += item.price
+      byTechnique.set(technique, row)
+    }
+  }
+  const count = (status: OrderStatus) => orders.filter((o) => o.status === status).length
+  return {
+    revenue, paidOrders: paid.length, averageTicket: paid.length ? revenue / paid.length : 0,
+    ordersByStatus: { pending: count('pending'), paid: count('paid'), shipped: count('shipped'), delivered: count('delivered'), cancelled: count('cancelled') },
+    catalog: {
+      onSale: db.artworks.filter((a) => a.status === 'published').length,
+      outOfStock: db.artworks.filter((a) => a.status === 'reserved' || a.status === 'sold').length,
+      drafts: db.artworks.filter((a) => a.status === 'draft').length,
+    },
+    topArtists: [...byArtist.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5),
+    salesByTechnique: [...byTechnique.values()].sort((a, b) => b.sold - a.sold),
+  }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { cancelOrderAction, createArtworkAction, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+import { cancelOrderAction, createArtworkAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
 
 export type Address = {
   cep: string
@@ -56,6 +56,33 @@ export type OrderView = {
   address: Address
   canCancel: boolean
   canSimulatePayment: boolean
+}
+
+export type SaleView = {
+  orderId: string
+  orderNumber: string
+  status: OrderStatus
+  createdAt: string
+  artworkId: string
+  title: string
+  artistName: string
+  image: string
+  price: number
+  buyerName: string
+  buyerCity: string
+  buyerState: string
+}
+
+export type AdminOrderView = OrderView & { buyerName: string; buyerEmail: string }
+
+export type ReportsView = {
+  revenue: number
+  paidOrders: number
+  averageTicket: number
+  ordersByStatus: Record<OrderStatus, number>
+  catalog: { onSale: number; outOfStock: number; drafts: number }
+  topArtists: { name: string; sold: number; revenue: number }[]
+  salesByTechnique: { technique: string; sold: number; revenue: number }[]
 }
 
 export type ArtistCandidate = {
@@ -459,7 +486,7 @@ function AddArtwork({ back, pending, submit }: { back: () => void; pending: bool
 }
 
 function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, review, pending, logout }: { candidates: ArtistCandidate[]; artworks: ArtworkView[]; user: UserView; theme: 'light' | 'dark'; toggleTheme: () => void; back: () => void; review: (id: string, decision: 'approved' | 'rejected', note: string) => void; pending: boolean; logout: () => void }) {
-  const [tab, setTab] = useState<'approvals' | 'artists' | 'artworks' | 'reports'>('approvals')
+  const [tab, setTab] = useState<'approvals' | 'artists' | 'artworks' | 'orders' | 'reports'>('approvals')
   const [candidates, setCandidates] = useState(initial)
   const [selected, setSelected] = useState<ArtistCandidate | null>(initial[0] ?? null)
   const [artists, setArtists] = useState(() => Array.from(new Set(artworks.map((art) => art.artistName))).map((name, index) => ({
@@ -471,18 +498,27 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
   })))
   const [note, setNote] = useState('')
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [reports, setReports] = useState<ReportsView | null>(null)
+  const [adminOrders, setAdminOrders] = useState<AdminOrderView[] | null>(null)
+  const [dataFailed, setDataFailed] = useState(false)
+  const loadData = useCallback(async () => {
+    try {
+      const [nextReports, nextOrders] = await Promise.all([getReports(), listAdminOrders()])
+      setReports(nextReports)
+      setAdminOrders(nextOrders)
+      setDataFailed(false)
+    } catch {
+      setDataFailed(true)
+    }
+  }, [])
+  useEffect(() => { if (tab === 'orders' || tab === 'reports') void loadData() }, [tab, loadData])
   const headings = {
     approvals: ['Curadoria de artistas', 'Analise novas solicitações e seus portfólios.'],
     artists: ['Todos os artistas', 'Acompanhe os artistas ativos na Nambá Galerie.'],
     artworks: ['Gestão de obras', 'Visualize o catálogo publicado na plataforma.'],
+    orders: ['Pedidos', 'Todas as compras feitas na Nambá Galerie.'],
     reports: ['Relatórios e estatísticas', 'Acompanhe os principais números da Nambá Galerie.'],
   }
-  const catalogValue = artworks.reduce((total, artwork) => total + artwork.price, 0)
-  const averagePrice = artworks.length ? catalogValue / artworks.length : 0
-  const techniques = Array.from(new Set(artworks.map((artwork) => artwork.technique))).map((technique) => ({
-    technique,
-    count: artworks.filter((artwork) => artwork.technique === technique).length,
-  })).sort((a, b) => b.count - a.count)
 
   function decide(decision: 'approved' | 'rejected') {
     if (!selected) return
@@ -501,23 +537,38 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
     setSelected(next[0] ?? null)
     setNote('')
   }
-  return <main className="admin-page"><aside className="admin-sidebar"><Logo light /><div className="admin-user"><span>{user.name.charAt(0)}</span><p><strong>{user.name}</strong><small>Curadoria Nambá</small></p></div><nav><button className={tab === 'approvals' ? 'active' : ''} type="button" onClick={() => setTab('approvals')}><span>01</span>Aprovações <b>{candidates.length}</b></button><button className={tab === 'artists' ? 'active' : ''} type="button" onClick={() => setTab('artists')}><span>02</span>Artistas</button><button className={tab === 'artworks' ? 'active' : ''} type="button" onClick={() => setTab('artworks')}><span>03</span>Obras</button><button className={tab === 'reports' ? 'active' : ''} type="button" onClick={() => setTab('reports')}><span>04</span>Relatórios</button></nav><button type="button" className="admin-theme-toggle" onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} /> Modo {theme === 'dark' ? 'claro' : 'escuro'}</button><button type="button" className="sidebar-exit" onClick={logout}><Icon name="logout" size={18} /> Sair</button></aside>
+  return <main className="admin-page"><aside className="admin-sidebar"><Logo light /><div className="admin-user"><span>{user.name.charAt(0)}</span><p><strong>{user.name}</strong><small>Curadoria Nambá</small></p></div><nav><button className={tab === 'approvals' ? 'active' : ''} type="button" onClick={() => setTab('approvals')}><span>01</span>Aprovações <b>{candidates.length}</b></button><button className={tab === 'artists' ? 'active' : ''} type="button" onClick={() => setTab('artists')}><span>02</span>Artistas</button><button className={tab === 'artworks' ? 'active' : ''} type="button" onClick={() => setTab('artworks')}><span>03</span>Obras</button><button className={tab === 'orders' ? 'active' : ''} type="button" onClick={() => setTab('orders')}><span>04</span>Pedidos</button><button className={tab === 'reports' ? 'active' : ''} type="button" onClick={() => setTab('reports')}><span>05</span>Relatórios</button></nav><button type="button" className="admin-theme-toggle" onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} /> Modo {theme === 'dark' ? 'claro' : 'escuro'}</button><button type="button" className="sidebar-exit" onClick={logout}><Icon name="logout" size={18} /> Sair</button></aside>
     <section className="admin-main"><header><div><p className="eyebrow">Painel administrativo</p><h1>{headings[tab][0]}</h1><p className="admin-subtitle">{headings[tab][1]}</p></div><Button kind="outline" onClick={back}>Visualizar loja</Button></header><div className="admin-stats"><article><span>Pendentes</span><strong>{candidates.length}</strong><small>aguardando análise</small></article><article><span>Aprovados</span><strong>{artists.length}</strong><small>artistas ativos</small></article><article><span>Obras</span><strong>{artworks.length}</strong><small>no catálogo</small></article></div>
       {tab === 'approvals' && <div className="review-layout"><section className="candidate-list"><div className="list-heading"><h2>Novas solicitações</h2><span>{candidates.length}</span></div>{candidates.length ? candidates.map((candidate) => <button type="button" key={candidate.id} className={selected?.id === candidate.id ? 'active' : ''} onClick={() => setSelected(candidate)}><span className="candidate-avatar">{candidate.name.charAt(0)}</span><div><strong>{candidate.name}</strong><small>{candidate.artStyle}</small><em>{candidate.city}{candidate.state ? ` · ${candidate.state}` : ''}</em></div><Icon name="arrow" size={17} /></button>) : <div className="list-empty"><Icon name="check" /><p>Fila concluída</p><small>Não há artistas aguardando análise.</small></div>}</section>
         <section className="candidate-detail">{selected ? <><div className="candidate-heading"><div><span className="candidate-avatar large">{selected.name.charAt(0)}</span><div><p className="eyebrow">Candidatura de artista</p><h2>{selected.name}</h2><span>{selected.email} · {selected.city}{selected.state ? `, ${selected.state}` : ''}</span></div></div><small>Enviado em {new Date(selected.createdAt).toLocaleDateString('pt-BR')}</small></div><div className="candidate-bio"><span>Pesquisa artística</span><h3>{selected.artStyle}</h3><p>{selected.artistBio || 'O artista ainda não adicionou uma descrição detalhada.'}</p></div><div className="portfolio-heading"><div><span>Portfólio enviado</span><strong>{selected.portfolio.length} obras</strong></div><p>Clique em uma imagem para ampliar e observar os detalhes.</p></div>{selected.portfolio.length ? <div className="portfolio-grid">{selected.portfolio.map((src, index) => <button type="button" key={src} onClick={() => setLightbox(src)}><Image src={src} alt={`Obra ${index + 1} do portfólio de ${selected.name}`} fill sizes="25vw" /><span>Ampliar</span></button>)}</div> : <div className="portfolio-empty">Nenhuma imagem de portfólio foi anexada.</div>}<label className="field review-field"><span>Observação para o artista (opcional)</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Explique sua decisão ou solicite ajustes…" /></label><div className="review-actions"><Button kind="danger" disabled={pending} onClick={() => decide('rejected')}><Icon name="close" size={17} /> Rejeitar</Button><Button kind="gold" disabled={pending} onClick={() => decide('approved')}><Icon name="check" size={17} /> Aprovar artista</Button></div></> : <div className="review-complete"><span><Icon name="check" size={32} /></span><h2>Curadoria em dia</h2><p>Todos os cadastros foram analisados.</p></div>}</section>
       </div>}
       {tab === 'artists' && <section className="admin-panel"><div className="panel-heading"><div><h2>Artistas ativos</h2><p>{artists.length} perfis disponíveis na plataforma</p></div><label className="admin-search"><span>Buscar</span><input placeholder="Nome ou técnica" /></label></div><div className="artist-admin-grid">{artists.map((artist) => <article key={artist.id}><span className="candidate-avatar large">{artist.name.charAt(0)}</span><div><h3>{artist.name}</h3><p>{artist.style}</p><small>{artist.location}</small></div><dl><div><dt>Obras</dt><dd>{artist.artworks}</dd></div><div><dt>Status</dt><dd className="status-active">Ativo</dd></div></dl><Button kind="outline">Ver perfil</Button></article>)}</div></section>}
       {tab === 'artworks' && <section className="admin-panel"><div className="panel-heading"><div><h2>Catálogo de obras</h2><p>{artworks.length} obras cadastradas</p></div><Button kind="outline">Exportar lista</Button></div><div className="artwork-admin-table"><div className="table-head"><span>Obra</span><span>Artista</span><span>Técnica</span><span>Valor</span><span>Status</span></div>{artworks.map((artwork) => <article key={artwork.id}><div className="admin-artwork-title"><div>{artwork.image && <Image src={artwork.image} alt="" fill sizes="54px" />}</div><strong>{artwork.title}</strong></div><span>{artwork.artistName}</span><span>{artwork.technique}</span><strong>{currency(artwork.price)}</strong><em>{artworkStatusLabel[artwork.status] ?? artwork.status}</em></article>)}</div></section>}
-      {tab === 'reports' && <section className="reports-layout"><div className="report-cards"><article><span>Valor do catálogo</span><strong>{currency(catalogValue)}</strong><small>soma das obras publicadas</small></article><article><span>Preço médio</span><strong>{currency(averagePrice)}</strong><small>por obra cadastrada</small></article><article><span>Média por artista</span><strong>{artists.length ? (artworks.length / artists.length).toFixed(1) : '0'}</strong><small>obras por artista</small></article></div><div className="reports-grid"><section><div className="panel-heading"><div><h2>Obras por técnica</h2><p>Distribuição do catálogo atual</p></div></div><div className="technique-report">{techniques.map((item) => <div key={item.technique}><p><span>{item.technique}</span><strong>{item.count}</strong></p><meter min="0" max={Math.max(...techniques.map((entry) => entry.count), 1)} value={item.count} /></div>)}</div></section><section><div className="panel-heading"><div><h2>Resumo da curadoria</h2><p>Situação dos perfis analisados</p></div></div><div className="curation-summary"><div><span className="summary-dot pending" /><p><strong>{candidates.length}</strong>Pendentes</p></div><div><span className="summary-dot approved" /><p><strong>{artists.length}</strong>Aprovados</p></div><div><span className="summary-dot catalogued" /><p><strong>{artworks.length}</strong>Obras ativas</p></div></div></section></div></section>}
+      {tab === 'orders' && <section className="admin-panel"><div className="panel-heading"><div><h2>Todos os pedidos</h2><p>{adminOrders ? `${adminOrders.length} pedidos registrados` : 'Carregando…'}</p></div></div>
+        {dataFailed ? <DataError retry={() => void loadData()} /> : adminOrders && (adminOrders.length ? <div className="orders-list">{adminOrders.map((order) => <article className="order-card" key={order.id}>
+          <header><div><strong>Pedido {order.number}</strong><span>{dateTime(order.createdAt)} · {order.buyerName} ({order.buyerEmail})</span></div><em className={`order-status status-${order.status}`}>{orderStatusLabel[order.status]}</em></header>
+          <div className="order-items">{order.items.map((item) => <div key={item.artworkId}><div className="order-thumb"><Image src={item.image} alt={item.title} fill sizes="64px" /></div><p><strong>{item.title}</strong><span>{item.artistName}</span></p><b>{currency(item.price)}</b></div>)}</div>
+          <dl className="order-info"><div><dt>Pagamento</dt><dd>{order.paymentMethod ? paymentMethodLabel[order.paymentMethod] : '—'}</dd></div><div><dt>Entrega</dt><dd>{order.address.street}, {order.address.number} · {order.address.city}/{order.address.state}</dd></div><div><dt>Total</dt><dd><strong>{currency(order.total)}</strong></dd></div></dl>
+        </article>)}</div> : <div className="account-empty"><span><Icon name="bag" size={25} /></span><h3>Nenhum pedido ainda</h3><p>Quando alguém comprar uma obra, o pedido aparece aqui.</p></div>)}
+      </section>}
+      {tab === 'reports' && <section className="reports-layout">{dataFailed ? <DataError retry={() => void loadData()} /> : !reports ? <p>Carregando…</p> : <>
+        <div className="report-cards"><article><span>Receita</span><strong>{currency(reports.revenue)}</strong><small>pedidos pagos, sem frete</small></article><article><span>Pedidos pagos</span><strong>{reports.paidOrders}</strong><small>pagos, enviados ou entregues</small></article><article><span>Ticket médio</span><strong>{currency(reports.averageTicket)}</strong><small>por pedido pago</small></article></div>
+        <div className="reports-grid">
+          <section><div className="panel-heading"><div><h2>Vendas por técnica</h2><p>Obras vendidas em pedidos pagos</p></div></div>{reports.salesByTechnique.length ? <div className="technique-report">{reports.salesByTechnique.map((item) => <div key={item.technique}><p><span>{item.technique}</span><strong>{item.sold} · {currency(item.revenue)}</strong></p><meter min="0" max={Math.max(...reports.salesByTechnique.map((entry) => entry.sold), 1)} value={item.sold} /></div>)}</div> : <p className="report-empty">Ainda não há vendas pagas.</p>}</section>
+          <section><div className="panel-heading"><div><h2>Artistas que mais vendem</h2><p>Por receita em pedidos pagos</p></div></div>{reports.topArtists.length ? <ol className="top-artists">{reports.topArtists.map((artist) => <li key={artist.name}><span>{artist.name}</span><small>{artist.sold} {artist.sold === 1 ? 'obra' : 'obras'}</small><strong>{currency(artist.revenue)}</strong></li>)}</ol> : <p className="report-empty">Ainda não há vendas pagas.</p>}</section>
+          <section><div className="panel-heading"><div><h2>Pedidos por situação</h2><p>Todos os pedidos registrados</p></div></div><div className="curation-summary">{(Object.keys(orderStatusLabel) as OrderStatus[]).map((status) => <div key={status}><span className={`summary-dot order-${status}`} /><p><strong>{reports.ordersByStatus[status] ?? 0}</strong>{orderStatusLabel[status]}</p></div>)}</div></section>
+          <section><div className="panel-heading"><div><h2>Catálogo e curadoria</h2><p>Situação atual das obras e dos perfis</p></div></div><div className="curation-summary"><div><span className="summary-dot approved" /><p><strong>{reports.catalog.onSale}</strong>À venda</p></div><div><span className="summary-dot catalogued" /><p><strong>{reports.catalog.outOfStock}</strong>Vendidas ou reservadas</p></div><div><span className="summary-dot pending" /><p><strong>{candidates.length}</strong>Artistas pendentes</p></div></div></section>
+        </div></>}</section>}
     </section>{lightbox && <div className="lightbox" onClick={() => setLightbox(null)}><button type="button" aria-label="Fechar"><Icon name="close" /></button><div><Image src={lightbox} alt="Obra ampliada do portfólio" fill sizes="90vw" /></div></div>}</main>
 }
 
-function Account({ user, back, initialTab = 'personal', onOrdersChange }: { user: UserView; back: () => void; initialTab?: 'personal' | 'orders'; onOrdersChange?: () => void }) {
-  const [tab, setTab] = useState<'personal' | 'addresses' | 'orders' | 'security'>(initialTab)
+function Account({ user, back, initialTab = 'personal', onOrdersChange }: { user: UserView; back: () => void; initialTab?: 'personal' | 'orders' | 'sales'; onOrdersChange?: () => void }) {
+  const [tab, setTab] = useState<'personal' | 'addresses' | 'orders' | 'sales' | 'security'>(initialTab)
   const tabs = [
     { id: 'personal' as const, label: 'Dados pessoais' },
     { id: 'addresses' as const, label: 'Endereços' },
     { id: 'orders' as const, label: 'Pedidos' },
+    ...(user.role === 'artist' ? [{ id: 'sales' as const, label: 'Minhas vendas' }] : []),
     { id: 'security' as const, label: 'Segurança' },
   ]
 
@@ -526,6 +577,7 @@ function Account({ user, back, initialTab = 'personal', onOrdersChange }: { user
       {tab === 'personal' && <><h2>Dados pessoais</h2><p>Visualize as principais informações do seu perfil.</p><div className="form-grid"><Field label="Nome completo" name="name" defaultValue={user.name} /><Field label="Cidade" name="city" defaultValue={user.city} /><Field label="Perfil" name="role" defaultValue={user.role === 'buyer' ? 'Comprador' : user.role === 'artist' ? 'Artista' : 'Administrador'} /><Field label="Status" name="status" defaultValue="Demonstração ativa" /></div><Button kind="gold">Salvar alterações</Button></>}
       {tab === 'addresses' && <><div className="account-section-heading"><div><h2>Endereços</h2><p>Gerencie os locais usados para entrega das suas obras.</p></div><Button kind="outline">Adicionar endereço</Button></div><div className="account-empty"><span><Icon name="user" size={25} /></span><h3>Nenhum endereço cadastrado</h3><p>Quando você adicionar um endereço, ele aparecerá aqui para facilitar suas próximas compras.</p><Button kind="gold">Cadastrar primeiro endereço</Button></div></>}
       {tab === 'orders' && <OrdersPanel back={back} onChange={onOrdersChange} />}
+      {tab === 'sales' && <SalesPanel />}
       {tab === 'security' && <><h2>Segurança</h2><p>Opções para proteger o acesso à sua conta.</p><div className="security-list"><article><div><strong>Senha de acesso</strong><span>Nenhuma senha configurada no modo de demonstração.</span></div><Button kind="outline">Configurar senha</Button></article><article><div><strong>Verificação em duas etapas</strong><span>Adicione uma camada extra de proteção ao seu perfil.</span></div><button type="button" className="status-control">Desativada</button></article><article><div><strong>Sessões conectadas</strong><span>Este é o único acesso de demonstração ativo.</span></div><Button kind="outline">Ver sessões</Button></article></div><div className="security-note"><Icon name="check" size={18} /><p><strong>Ambiente de demonstração</strong>Nenhuma alteração de segurança será salva neste momento.</p></div></>}
     </section>
   </div></main>
@@ -580,6 +632,40 @@ function OrdersPanel({ back, onChange }: { back: () => void; onChange?: () => vo
         {order.canSimulatePayment && <Button kind="gold" disabled={busy === order.id} onClick={() => void act(order.id, simulatePaymentAction)}>Simular pagamento (teste)</Button>}
         {order.canCancel && <Button kind="outline" disabled={busy === order.id} onClick={() => { if (window.confirm('Cancelar este pedido? As obras voltam para a vitrine.')) void act(order.id, cancelOrderAction) }}>Cancelar pedido</Button>}
       </div>}
+    </article>)}</div></>
+}
+
+function DataError({ retry }: { retry: () => void }) {
+  return <div className="account-empty"><h3>Não foi possível carregar os dados</h3><p>Verifique sua conexão e tente novamente.</p><Button kind="gold" onClick={retry}>Tentar novamente</Button></div>
+}
+
+function SalesPanel() {
+  const [sales, setSales] = useState<SaleView[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      setSales(await listSales())
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  if (failed) return <><h2>Minhas vendas</h2><DataError retry={() => void load()} /></>
+  if (!sales) return <><h2>Minhas vendas</h2><p>Carregando…</p></>
+
+  const paid = sales.filter((sale) => sale.status !== 'pending')
+  const total = paid.reduce((sum, sale) => sum + sale.price, 0)
+  if (!sales.length) return <><h2>Minhas vendas</h2><p>Acompanhe as obras que já foram compradas.</p><div className="account-empty"><span><Icon name="bag" size={25} /></span><h3>Nenhuma venda ainda</h3><p>Quando alguém comprar uma das suas obras, ela aparece aqui.</p></div></>
+
+  return <><h2>Minhas vendas</h2><p>Acompanhe as obras que já foram compradas.</p>
+    <div className="sales-summary"><div><span>Obras vendidas</span><strong>{paid.length}</strong></div><div><span>Total vendido</span><strong>{currency(total)}</strong></div><div><span>Aguardando pagamento</span><strong>{sales.length - paid.length}</strong></div></div>
+    <div className="orders-list">{sales.map((sale) => <article className="order-card" key={`${sale.orderId}-${sale.artworkId}`}>
+      <header><div><strong>Pedido {sale.orderNumber}</strong><span>{dateTime(sale.createdAt)}</span></div><em className={`order-status status-${sale.status}`}>{orderStatusLabel[sale.status]}</em></header>
+      <div className="order-items"><div><div className="order-thumb"><Image src={sale.image} alt={sale.title} fill sizes="64px" /></div><p><strong>{sale.title}</strong><span>Comprador: {sale.buyerName}{sale.buyerCity ? ` · ${sale.buyerCity}${sale.buyerState ? `/${sale.buyerState}` : ''}` : ''}</span></p><b>{currency(sale.price)}</b></div></div>
     </article>)}</div></>
 }
 
