@@ -717,3 +717,10 @@ img { object-fit: cover; }
 /* edição de obra e ações do catálogo */
 .edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .8rem; }
 .artwork-admin-table article .btn { justify-self: start; padding: .55rem .9rem; font-size: .62rem; }
+
+/* endereços da conta */
+.address-card { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 1rem 1.2rem; }
+.address-card p { margin: 0; display: grid; gap: .3rem; font-size: .85rem; }
+.address-card span { color: var(--muted); font-size: .74rem; }
+.address-card .order-actions { padding: 0; margin: 0; border: 0; }
+.account-section-heading .btn { flex-shrink: 0; white-space: nowrap; }

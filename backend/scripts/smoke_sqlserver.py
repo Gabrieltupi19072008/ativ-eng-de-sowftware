@@ -198,6 +198,21 @@ def main():
         db.commit()
     check("pedido vencido libera a obra", pending["items"][0]["artworkId"] in public_ids())
 
+    # conta: dados pessoais, endereços (com soft delete e histórico de pedidos) e senha
+    r = buyer2.patch("/me", json={"name": "Comprador Dois Editado", "phone": "(81) 98888-7777", "city": "Olinda", "state": "pe", "bio": ""})
+    check("perfil atualizado", r.status_code == 200 and r.json()["user"]["phone"] == "81988887777" and r.json()["user"]["state"] == "PE", r.text[:100])
+    addr = {"cep": "50030-230", "street": "Rua do Sol", "number": "1", "complement": "", "neighborhood": "Santo Amaro", "city": "Recife", "state": "PE"}
+    new_addr = buyer2.post("/me/addresses", json=addr)
+    check("endereço adicionado", new_addr.status_code == 201, new_addr.text[:100])
+    addr_id = new_addr.json()["address"]["id"]
+    check("endereço editado no lugar (sem pedido)", buyer2.patch(f"/me/addresses/{addr_id}", json={**addr, "number": "2"}).json()["address"]["id"] == addr_id)
+    check("endereço excluído some da lista", buyer2.delete(f"/me/addresses/{addr_id}").status_code == 200 and addr_id not in [a["id"] for a in buyer2.get("/me/addresses").json()])
+    check("senha atual errada recusada", buyer2.post("/me/password", json={"currentPassword": "errada", "newPassword": "outra-senha-9"}).status_code == 400)
+    check("senha trocada", buyer2.post("/me/password", json={"currentPassword": "senha-forte-1", "newPassword": "outra-senha-9"}).status_code == 200)
+    fresh = client()
+    check("login com a senha antiga falha e com a nova entra", fresh.post("/auth/login", json={"email": f"buyer2{stamp}@example.com", "password": "senha-forte-1"}).status_code == 401
+          and fresh.post("/auth/login", json={"email": f"buyer2{stamp}@example.com", "password": "outra-senha-9"}).status_code == 200)
+
     # 6) logout encerra a sessão
     buyer.post("/auth/logout")
     check("logout", buyer.get("/me").status_code == 401)

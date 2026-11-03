@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 import config
+from addresses import AddressIn, clean_address
 from database import get_db
 from deps import current_user
 from errors import ApiError
@@ -17,16 +18,6 @@ from orders_service import can_fulfil, cancel_waiting_order, expire_orders, mark
 from serializers import PAYMENT_IN, order_view
 
 router = APIRouter(tags=["orders"])
-
-
-class AddressIn(BaseModel):
-    cep: str = Field(max_length=20)
-    street: str = Field(max_length=150)
-    number: str = Field(max_length=20)
-    complement: str = Field(default="", max_length=100)
-    neighborhood: str = Field(max_length=80)
-    city: str = Field(max_length=80)
-    state: str = Field(max_length=2)
 
 
 class OrderIn(BaseModel):
@@ -65,30 +56,20 @@ def _own_or_admin(db: Session, order_id: int, user: Cliente) -> Pedido:
 
 
 def _shipping_address(db: Session, user: Cliente, data: AddressIn) -> Endereco:
-    cep = re.sub(r"\D", "", data.cep)
-    street, number, neighborhood, city = (v.strip() for v in (data.street, data.number, data.neighborhood, data.city))
-    complement, state = data.complement.strip(), data.state.strip().upper()
-    if len(cep) != 8:
-        raise ApiError(400, "Informe um CEP válido.", "cep")
-    for value, field, label in ((street, "street", "a rua"), (number, "number", "o número"), (neighborhood, "neighborhood", "o bairro"), (city, "city", "a cidade")):
-        if not value:
-            raise ApiError(400, f"Informe {label}.", field)
-    if not re.fullmatch(r"[A-Z]{2}", state):
-        raise ApiError(400, "Informe o estado com 2 letras (ex.: SP).", "state")
-    formatted = f"{cep[:5]}-{cep[5:]}"
-
-    complement_matches = Endereco.complemento == complement if complement else Endereco.complemento.is_(None)
+    a = clean_address(data)
+    complement_matches = Endereco.complemento == a["complement"] if a["complement"] else Endereco.complemento.is_(None)
     existing = db.scalar(
         select(Endereco).where(
-            Endereco.id_cliente == user.id_cliente, Endereco.tipo == "ENTREGA", Endereco.cep == formatted, Endereco.logradouro == street,
-            Endereco.numero == number, Endereco.bairro == neighborhood, Endereco.cidade == city, Endereco.estado == state, complement_matches,
+            Endereco.id_cliente == user.id_cliente, Endereco.tipo == "ENTREGA", Endereco.ativo == "S", Endereco.cep == a["cep"],
+            Endereco.logradouro == a["street"], Endereco.numero == a["number"], Endereco.bairro == a["neighborhood"],
+            Endereco.cidade == a["city"], Endereco.estado == a["state"], complement_matches,
         )
     )
     if existing:
         return existing
     address = Endereco(
-        id_cliente=user.id_cliente, tipo="ENTREGA", logradouro=street, numero=number, complemento=complement or None,
-        bairro=neighborhood, cidade=city, estado=state, cep=formatted,
+        id_cliente=user.id_cliente, tipo="ENTREGA", logradouro=a["street"], numero=a["number"], complemento=a["complement"],
+        bairro=a["neighborhood"], cidade=a["city"], estado=a["state"], cep=a["cep"],
     )
     db.add(address)
     db.flush()

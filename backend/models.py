@@ -49,6 +49,7 @@ class Endereco(Base):
     cidade: Mapped[str] = mapped_column(String(80))
     estado: Mapped[str] = mapped_column(String(2))
     cep: Mapped[str] = mapped_column(String(10))
+    ativo: Mapped[str] = mapped_column(String(1), server_default="S")
 
     cliente: Mapped[Cliente] = relationship(back_populates="enderecos")
 

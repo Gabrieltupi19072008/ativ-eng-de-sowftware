@@ -1,9 +1,9 @@
 // Modo simulado: tudo no navegador (localStorage), sem back-end.
 // Ligado com VITE_USE_MOCK=true. Tem as mesmas funções de api.ts, que escolhe qual usar.
 import { seedArtworks, seedCandidates } from './data/seed'
-import type { AdminOrderView, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, SavedAddress, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
 
-import type { ActionResult, ArtworkInput, OrderInput } from './api'
+import type { ActionResult, ArtworkInput, OrderInput, ProfileInput } from './api'
 import { DEMO_ACCOUNTS } from './demoAccounts'
 
 type StoredUser = UserView & {
@@ -14,6 +14,9 @@ type StoredUser = UserView & {
   portfolio: string[]
   createdAt: string
   reviewNote?: string
+  phone?: string
+  bio?: string
+  addresses?: SavedAddress[]
 }
 type StoredArtwork = ArtworkView & { ownerId?: string }
 type StoredOrder = OrderView & { ownerId: string }
@@ -61,7 +64,7 @@ function writeDb(db: Db) {
 
 const getSession = () => window.localStorage.getItem(SESSION_KEY)
 const text = (data: FormData, key: string) => String(data.get(key) ?? '').trim()
-const publicUser = ({ id, name, email, role, artistStatus, city, address }: StoredUser): UserView => ({ id, name, email, role, artistStatus, city, address })
+const publicUser = ({ id, name, email, role, artistStatus, city, state, phone, bio, address, addresses }: StoredUser): UserView => ({ id, name, email, role, artistStatus, city, state, phone, bio, address: addresses ? addresses[0] : address })
 
 // Reduz as imagens enviadas para caberem no localStorage.
 function fileToDataUrl(file: File, maxSize = 1200): Promise<string> {
@@ -467,4 +470,73 @@ export async function setArtworkVisibilityAction(id: string, visible: boolean): 
   else if (!visible && art.status === 'published') art.status = 'hidden'
   writeDb(db)
   return { ok: true, message: visible ? 'Obra devolvida à vitrine.' : 'Obra despublicada.' }
+}
+
+// ---------- conta (simulado) ----------
+export async function updateProfileAction(input: ProfileInput): Promise<ActionResult> {
+  const me = await currentUser()
+  const db = readDb()
+  const user = db.users.find((u) => u.id === me?.id)
+  if (!user) return { ok: false, message: 'Faça login para continuar.' }
+  if (input.name.trim().length < 3) return { ok: false, message: 'Informe seu nome completo.', field: 'name' }
+  const phone = input.phone.replace(/\D/g, '')
+  if (phone && (phone.length < 10 || phone.length > 11)) return { ok: false, message: 'Informe o celular com DDD (ex.: (11) 99999-9999).', field: 'phone' }
+  if (user.role === 'artist' && input.bio.trim().length < 60) return { ok: false, message: 'Conte sobre sua pesquisa artística (de 60 a 2000 caracteres).', field: 'bio' }
+  Object.assign(user, { name: input.name.trim(), phone, city: input.city.trim(), state: input.state.trim().toUpperCase() })
+  if (user.role === 'artist') user.bio = input.bio.trim()
+  writeDb(db)
+  return { ok: true, message: 'Dados atualizados.' }
+}
+
+export async function changePasswordAction(current: string, next: string): Promise<ActionResult> {
+  const me = await currentUser()
+  const db = readDb()
+  const user = db.users.find((u) => u.id === me?.id)
+  if (!user) return { ok: false, message: 'Faça login para continuar.' }
+  if (user.password !== current) return { ok: false, message: 'A senha atual está incorreta.', field: 'currentPassword' }
+  if (next.length < 8) return { ok: false, message: 'A nova senha deve ter entre 8 e 128 caracteres.', field: 'newPassword' }
+  if (next === current) return { ok: false, message: 'A nova senha precisa ser diferente da atual.', field: 'newPassword' }
+  user.password = next
+  writeDb(db)
+  return { ok: true, message: 'Senha alterada.' }
+}
+
+function addressBook(db: Db, userId: string | undefined): { user?: StoredUser; list: SavedAddress[] } {
+  const user = db.users.find((u) => u.id === userId)
+  if (user && !user.addresses) user.addresses = user.address ? [{ ...user.address, id: 'addr-0' }] : []
+  return { user, list: user?.addresses ?? [] }
+}
+
+export async function listAddresses(): Promise<SavedAddress[]> {
+  const me = await currentUser()
+  return addressBook(readDb(), me?.id).list
+}
+
+export async function saveAddressAction(address: Address, id?: string): Promise<ActionResult> {
+  const me = await currentUser()
+  const db = readDb()
+  const { user, list } = addressBook(db, me?.id)
+  if (!user) return { ok: false, message: 'Faça login para continuar.' }
+  if (address.cep.replace(/\D/g, '').length !== 8) return { ok: false, message: 'Informe um CEP válido.', field: 'cep' }
+  if (!address.street.trim() || !address.number.trim() || !address.neighborhood.trim() || !address.city.trim()) return { ok: false, message: 'Preencha rua, número, bairro e cidade.' }
+  if (id) {
+    const current = list.find((a) => a.id === id)
+    if (!current) return { ok: false, message: 'Endereço não encontrado.' }
+    Object.assign(current, address)
+  } else {
+    if (list.length >= 10) return { ok: false, message: 'Você pode ter até 10 endereços. Exclua algum para adicionar outro.' }
+    list.push({ ...address, id: `addr-${Date.now()}` })
+  }
+  writeDb(db)
+  return { ok: true, message: id ? 'Endereço atualizado.' : 'Endereço adicionado.' }
+}
+
+export async function deleteAddressAction(id: string): Promise<ActionResult> {
+  const me = await currentUser()
+  const db = readDb()
+  const { user } = addressBook(db, me?.id)
+  if (!user?.addresses?.some((a) => a.id === id)) return { ok: false, message: 'Endereço não encontrado.' }
+  user.addresses = user.addresses.filter((a) => a.id !== id)
+  writeDb(db)
+  return { ok: true, message: 'Endereço excluído.' }
 }

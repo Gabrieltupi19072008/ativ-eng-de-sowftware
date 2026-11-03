@@ -8,11 +8,11 @@ Login e sessão, cadastro (comprador e artista com portfólio), vitrine de obras
 ## Rodar pela primeira vez
 
 1. **Banco de dados** (SQL Server). Execute, nesta ordem, os scripts da pasta `sql/`:
-   `00_criar_banco.sql` → `01_schema.sql` → `02_ajustes_front.sql` → `03_pedidos.sql`
+   `00_criar_banco.sql` → `01_schema.sql` → `02_ajustes_front.sql` → `03_pedidos.sql` → `04_conta.sql`
    (o `02` e o `03` podem ser rodados de novo sem problema). Pelo terminal:
    ```bash
    cd sql
-   for f in 00_criar_banco 01_schema 02_ajustes_front 03_pedidos; do sqlcmd -I -S localhost,1433 -U sa -P 'SUA_SENHA' -C -b -i $f.sql; done
+   for f in 00_criar_banco 01_schema 02_ajustes_front 03_pedidos 04_conta; do sqlcmd -I -S localhost,1433 -U sa -P 'SUA_SENHA' -C -b -i $f.sql; done
    ```
    O `-I` é importante: sem ele o `sqlcmd` falha ao mexer na tabela `cliente` (o índice único do CPF exige `QUOTED_IDENTIFIER` ligado). A API não tem esse problema.
    - **No Mac não existe SQL Server nativo.** Rode num contêiner. Sem precisar de senha de administrador:
@@ -69,6 +69,14 @@ Erros sempre vêm como `{ "ok": false, "message": "...", "field": "campo" }` (o 
 | `GET /orders/{id}` | dono do pedido ou admin | Um pedido (outra pessoa recebe 404) |
 | `POST /orders/{id}/cancel` | dono ou admin | Cancela pedido que ainda aguarda pagamento e devolve as obras à vitrine |
 | `POST /orders/{id}/simulate-payment` | dono ou admin | **Só em desenvolvimento** (`FAKE_PAYMENTS`): marca como pago sem cobrar. Será trocado pelo webhook do gateway |
+| `POST /orders/{id}/ship` | artista (dono de todas as obras) ou admin | Pedido pago vira "enviado" com código de rastreio (JSON `{trackingCode, carrier?}`; código único) |
+| `POST /orders/{id}/deliver` | artista (dono de todas as obras) ou admin | Pedido enviado vira "entregue" |
+| `GET /sales` | artista ou admin | Obras vendidas/reservadas do artista (admin vê todas); o endereço só aparece depois do pagamento |
+| `GET /admin/orders`, `GET /admin/reports` | admin | Todos os pedidos e os números dos relatórios |
+| `PATCH /artworks/{id}`, `DELETE /artworks/{id}` | artista dono | Edita (ou salva como rascunho) e exclui; obra reservada/vendida não muda; excluir só se nunca esteve em pedido |
+| `PATCH /artworks/{id}/visibility` | admin | Despublica/republica uma obra (`{visible: bool}`) |
+| `PATCH /me`, `POST /me/password` | logado | Dados pessoais e troca de senha (exige a senha atual; 5 erros bloqueiam por 15 min) |
+| `GET/POST /me/addresses`, `PATCH/DELETE /me/addresses/{id}` | logado | Endereços de entrega (excluir só esconde; editar endereço já usado em pedido cria um novo) |
 | `GET /health` | todos | Confere a conexão com o banco |
 
 ### Como os pedidos funcionam

@@ -16,26 +16,38 @@ def _number(value) -> float | None:
     return float(value) if value is not None else None
 
 
+def address_view(e) -> dict:
+    return {
+        "id": str(e.id_endereco),
+        "cep": e.cep,
+        "street": e.logradouro,
+        "number": e.numero,
+        "complement": e.complemento or "",
+        "neighborhood": e.bairro,
+        "city": e.cidade,
+        "state": e.estado,
+    }
+
+
+def active_addresses(c: Cliente) -> list:
+    return [e for e in c.enderecos if e.tipo == "ENTREGA" and e.ativo == "S"]
+
+
 def user_view(c: Cliente) -> dict:
-    address = next((e for e in c.enderecos if e.tipo == "ENTREGA"), None)
+    addresses = active_addresses(c)
     view = {
         "id": str(c.id_cliente),
         "name": c.nome,
         "email": c.email,
         "role": ROLE_OUT[c.papel],
         "artistStatus": STATUS_OUT[c.status_artista],
-        "city": c.cidade or (address.cidade if address else ""),
+        "city": c.cidade or (addresses[0].cidade if addresses else ""),
+        "state": c.estado or "",
+        "phone": c.telefone or "",
+        "bio": c.biografia or "",
     }
-    if address:
-        view["address"] = {
-            "cep": address.cep,
-            "street": address.logradouro,
-            "number": address.numero,
-            "complement": address.complemento or "",
-            "neighborhood": address.bairro,
-            "city": address.cidade,
-            "state": address.estado,
-        }
+    if addresses:
+        view["address"] = address_view(addresses[0])
     return view
 
 

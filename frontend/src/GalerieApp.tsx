@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+import { changePasswordAction, deleteAddressAction, listAddresses, saveAddressAction, updateProfileAction, cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
 
 export type Address = {
   cep: string
@@ -20,8 +20,13 @@ export type UserView = {
   role: 'buyer' | 'artist' | 'admin'
   artistStatus?: 'not-applicable' | 'pending' | 'approved' | 'rejected' | null
   city: string
+  state?: string
+  phone?: string
+  bio?: string
   address?: Address
 }
+
+export type SavedAddress = Address & { id: string }
 
 export type ArtworkView = {
   id: string
@@ -604,12 +609,12 @@ function Account({ user, artworks, back, initialTab = 'personal', onOrdersChange
 
   return <main className="account-page"><button type="button" className="back-link" onClick={back}>← Voltar para a loja</button><div className="account-header"><span>{user.name.charAt(0)}</span><div><p className="eyebrow">Minha conta</p><h1>{user.name}</h1><p>{user.role === 'buyer' ? 'Perfil de comprador' : user.role === 'artist' ? 'Perfil de artista' : 'Perfil administrativo'}{user.city ? ` · ${user.city}` : ''}</p></div></div><div className="account-grid"><aside>{tabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} type="button" onClick={() => setTab(item.id)}>{item.label}</button>)}</aside>
     <section>
-      {tab === 'personal' && <><h2>Dados pessoais</h2><p>Visualize as principais informações do seu perfil.</p><div className="form-grid"><Field label="Nome completo" name="name" defaultValue={user.name} /><Field label="Cidade" name="city" defaultValue={user.city} /><Field label="Perfil" name="role" defaultValue={user.role === 'buyer' ? 'Comprador' : user.role === 'artist' ? 'Artista' : 'Administrador'} /><Field label="Status" name="status" defaultValue="Demonstração ativa" /></div><Button kind="gold">Salvar alterações</Button></>}
-      {tab === 'addresses' && <><div className="account-section-heading"><div><h2>Endereços</h2><p>Gerencie os locais usados para entrega das suas obras.</p></div><Button kind="outline">Adicionar endereço</Button></div><div className="account-empty"><span><Icon name="user" size={25} /></span><h3>Nenhum endereço cadastrado</h3><p>Quando você adicionar um endereço, ele aparecerá aqui para facilitar suas próximas compras.</p><Button kind="gold">Cadastrar primeiro endereço</Button></div></>}
+      {tab === 'personal' && <PersonalPanel user={user} onSaved={onOrdersChange} />}
+      {tab === 'addresses' && <AddressesPanel onChange={onOrdersChange} />}
       {tab === 'orders' && <OrdersPanel back={back} onChange={onOrdersChange} />}
       {tab === 'sales' && <SalesPanel />}
       {tab === 'artworks' && <MyArtworks artworks={artworks.filter((art) => art.artistId === user.id)} onChange={onOrdersChange} />}
-      {tab === 'security' && <><h2>Segurança</h2><p>Opções para proteger o acesso à sua conta.</p><div className="security-list"><article><div><strong>Senha de acesso</strong><span>Nenhuma senha configurada no modo de demonstração.</span></div><Button kind="outline">Configurar senha</Button></article><article><div><strong>Verificação em duas etapas</strong><span>Adicione uma camada extra de proteção ao seu perfil.</span></div><button type="button" className="status-control">Desativada</button></article><article><div><strong>Sessões conectadas</strong><span>Este é o único acesso de demonstração ativo.</span></div><Button kind="outline">Ver sessões</Button></article></div><div className="security-note"><Icon name="check" size={18} /><p><strong>Ambiente de demonstração</strong>Nenhuma alteração de segurança será salva neste momento.</p></div></>}
+      {tab === 'security' && <SecurityPanel />}
     </section>
   </div></main>
 }
@@ -764,6 +769,120 @@ function MyArtworks({ artworks, onChange }: { artworks: ArtworkView[]; onChange?
         </div>}
       </article>
     })}</div></>
+}
+
+function PersonalPanel({ user, onSaved }: { user: UserView; onSaved?: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const field = (name: string) => String(data.get(name) ?? '')
+    setBusy(true)
+    const result = await updateProfileAction({ name: field('name'), phone: field('phone'), city: field('city'), state: field('state'), bio: field('bio') })
+    setBusy(false)
+    setNotice({ text: result.message, error: !result.ok })
+    if (result.ok) onSaved?.()
+  }
+
+  return <><h2>Dados pessoais</h2><p>Mantenha suas informações atualizadas. O e-mail é o seu login e não pode ser alterado por aqui.</p>
+    <form className="form-stack" onSubmit={(event) => void save(event)}>
+      <div className="form-grid"><Field label="Nome completo" name="name" defaultValue={user.name} required /><Field label="Celular (com DDD)" name="phone" type="tel" defaultValue={user.phone ?? ''} placeholder="(11) 99999-9999" /></div>
+      <div className="form-grid"><Field label="Cidade" name="city" defaultValue={user.city} /><Field label="Estado (UF)" name="state" defaultValue={user.state ?? ''} placeholder="SP" /></div>
+      {user.role === 'artist' && <label className="field"><span>Sua pesquisa artística</span><textarea name="bio" rows={5} defaultValue={user.bio ?? ''} required minLength={60} maxLength={2000} /></label>}
+      <div className="form-grid"><label className="field"><span>E-mail</span><input value={user.email} readOnly disabled /></label><label className="field"><span>Perfil</span><input value={user.role === 'buyer' ? 'Comprador' : user.role === 'artist' ? 'Artista' : 'Administrador'} readOnly disabled /></label></div>
+      {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+      <div><Button type="submit" kind="gold" disabled={busy}>{busy ? 'Salvando…' : 'Salvar alterações'}</Button></div>
+    </form></>
+}
+
+function AddressesPanel({ onChange }: { onChange?: () => void }) {
+  const [addresses, setAddresses] = useState<SavedAddress[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [editing, setEditing] = useState<{ id?: string; value: Address } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+  const [formError, setFormError] = useState('')
+
+  const load = useCallback(async () => {
+    try {
+      setAddresses(await listAddresses())
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editing) return
+    setBusy(true)
+    const result = await saveAddressAction(editing.value, editing.id)
+    setBusy(false)
+    if (!result.ok) { setFormError(result.message); return }
+    setNotice({ text: result.message })
+    setEditing(null)
+    setFormError('')
+    await load()
+    onChange?.() // o checkout usa o primeiro endereço como sugestão
+  }
+
+  async function remove(address: SavedAddress) {
+    if (!window.confirm(`Excluir o endereço ${address.street}, ${address.number}?`)) return
+    setBusy(true)
+    const result = await deleteAddressAction(address.id)
+    setBusy(false)
+    setNotice({ text: result.message, error: !result.ok })
+    await load()
+    onChange?.()
+  }
+
+  if (failed) return <><h2>Endereços</h2><DataError retry={() => void load()} /></>
+  if (!addresses) return <><h2>Endereços</h2><p>Carregando…</p></>
+
+  if (editing) {
+    return <><h2>{editing.id ? 'Editar endereço' : 'Novo endereço'}</h2><p>Digite o CEP para preencher rua, bairro e cidade automaticamente.</p>
+      <form className="form-stack" onSubmit={(event) => void save(event)}>
+        <AddressFields value={editing.value} onChange={(value) => setEditing({ ...editing, value })} strict />
+        {formError && <p className="orders-notice is-error" role="alert">{formError}</p>}
+        <div className="editor-actions edit-actions"><Button kind="ghost" onClick={() => { setEditing(null); setFormError('') }}>Cancelar</Button><Button type="submit" kind="gold" disabled={busy}>{busy ? 'Salvando…' : 'Salvar endereço'}</Button></div>
+      </form></>
+  }
+
+  return <><div className="account-section-heading"><div><h2>Endereços</h2><p>Gerencie os locais usados para entrega das suas obras. O primeiro da lista é sugerido no checkout.</p></div><Button kind="outline" onClick={() => { setNotice(null); setEditing({ value: emptyAddress }) }}>Adicionar endereço</Button></div>
+    {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+    {addresses.length ? <div className="orders-list">{addresses.map((address) => <article className="order-card" key={address.id}>
+      <div className="address-card"><p><strong>{address.street}, {address.number}{address.complement ? ` – ${address.complement}` : ''}</strong><span>{address.neighborhood} · {address.city}/{address.state} · CEP {address.cep}</span></p>
+        <div className="order-actions"><Button kind="outline" disabled={busy} onClick={() => { setNotice(null); setEditing({ id: address.id, value: { cep: address.cep, street: address.street, number: address.number, complement: address.complement, neighborhood: address.neighborhood, city: address.city, state: address.state } }) }}>Editar</Button><Button kind="danger" disabled={busy} onClick={() => void remove(address)}>Excluir</Button></div></div>
+    </article>)}</div> : <div className="account-empty"><span><Icon name="user" size={25} /></span><h3>Nenhum endereço cadastrado</h3><p>Quando você adicionar um endereço, ele aparecerá aqui para facilitar suas próximas compras.</p><Button kind="gold" onClick={() => setEditing({ value: emptyAddress })}>Cadastrar primeiro endereço</Button></div>}</>
+}
+
+function SecurityPanel() {
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const field = (name: string) => String(data.get(name) ?? '')
+    if (field('newPassword') !== field('confirmPassword')) { setNotice({ text: 'A confirmação não é igual à nova senha.', error: true }); return }
+    setBusy(true)
+    const result = await changePasswordAction(field('currentPassword'), field('newPassword'))
+    setBusy(false)
+    setNotice({ text: result.message, error: !result.ok })
+    if (result.ok) form.reset()
+  }
+
+  return <><h2>Segurança</h2><p>Troque a senha de acesso da sua conta.</p>
+    <form className="form-stack" onSubmit={(event) => void save(event)}>
+      <label className="field"><span>Senha atual</span><input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+      <div className="form-grid"><label className="field"><span>Nova senha (mínimo 8 caracteres)</span><input name="newPassword" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></label><label className="field"><span>Repita a nova senha</span><input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></label></div>
+      {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+      <div><Button type="submit" kind="gold" disabled={busy}>{busy ? 'Salvando…' : 'Trocar senha'}</Button></div>
+    </form></>
 }
 
 function DataError({ retry }: { retry: () => void }) {

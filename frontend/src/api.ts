@@ -2,7 +2,7 @@
 //
 // Por padrão fala com a API em Python (VITE_API_URL, padrão http://localhost:8000).
 // Com VITE_USE_MOCK=true usa a versão simulada no navegador (src/mock.ts), útil sem back-end.
-import type { AdminOrderView, Address, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, SavedAddress, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './GalerieApp'
 import { DEMO_ACCOUNTS } from './demoAccounts'
 import * as mock from './mock'
 
@@ -12,6 +12,7 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 // order e unavailable só vêm nas ações de pedido (unavailable = ids de obras que já não estão à venda)
 export type ActionResult = { ok: boolean; message: string; field?: string; order?: OrderView; unavailable?: string[] }
 export type ArtworkInput = { title: string; technique: string; description: string; price: string; width: string; height: string; year: string; submitType: 'publish' | 'draft' }
+export type ProfileInput = { name: string; phone: string; city: string; state: string; bio: string }
 export type OrderInput = { items: string[]; address: Address; paymentMethod: PaymentMethod }
 
 const OFFLINE: ActionResult = { ok: false, message: 'Não foi possível conectar ao servidor. Tente novamente em instantes.' }
@@ -115,6 +116,14 @@ const apiUpdateArtwork = (id: string, input: ArtworkInput) => action(`/artworks/
 const apiDeleteArtwork = (id: string) => action(`/artworks/${encodeURIComponent(id)}`, { method: 'DELETE' })
 const apiSetVisibility = (id: string, visible: boolean) => action(`/artworks/${encodeURIComponent(id)}/visibility`, { method: 'PATCH', ...json({ visible }) })
 
+const apiUpdateProfile = (input: ProfileInput) => action('/me', { method: 'PATCH', ...json(input) })
+const apiChangePassword = (currentPassword: string, newPassword: string) => action('/me/password', { method: 'POST', ...json({ currentPassword, newPassword }) })
+const apiListAddresses = async () => readJson<SavedAddress[]>(await call('/me/addresses'))
+const apiSaveAddress = (address: Address, id?: string) => id
+  ? action(`/me/addresses/${encodeURIComponent(id)}`, { method: 'PATCH', ...json(address) })
+  : action('/me/addresses', { method: 'POST', ...json(address) })
+const apiDeleteAddress = (id: string) => action(`/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
 const apiShipOrder = (id: string, trackingCode: string) => action(`/orders/${encodeURIComponent(id)}/ship`, { method: 'POST', ...json({ trackingCode }) })
 const apiDeliverOrder = (id: string) => action(`/orders/${encodeURIComponent(id)}/deliver`, { method: 'POST' })
 
@@ -144,3 +153,8 @@ export const deliverOrderAction: (id: string) => Promise<ActionResult> = USE_MOC
 export const updateArtworkAction: (id: string, input: ArtworkInput) => Promise<ActionResult> = USE_MOCK ? mock.updateArtworkAction : apiUpdateArtwork
 export const deleteArtworkAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.deleteArtworkAction : apiDeleteArtwork
 export const setArtworkVisibilityAction: (id: string, visible: boolean) => Promise<ActionResult> = USE_MOCK ? mock.setArtworkVisibilityAction : apiSetVisibility
+export const updateProfileAction: (input: ProfileInput) => Promise<ActionResult> = USE_MOCK ? mock.updateProfileAction : apiUpdateProfile
+export const changePasswordAction: (current: string, next: string) => Promise<ActionResult> = USE_MOCK ? mock.changePasswordAction : apiChangePassword
+export const listAddresses: () => Promise<SavedAddress[]> = USE_MOCK ? mock.listAddresses : apiListAddresses
+export const saveAddressAction: (address: Address, id?: string) => Promise<ActionResult> = USE_MOCK ? mock.saveAddressAction : apiSaveAddress
+export const deleteAddressAction: (id: string) => Promise<ActionResult> = USE_MOCK ? mock.deleteAddressAction : apiDeleteAddress
