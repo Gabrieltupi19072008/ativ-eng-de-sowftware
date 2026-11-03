@@ -1,5 +1,17 @@
-import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { createArtworkAction, loginAction, logoutAction, registerAction, reviewArtistAction } from './api'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
+import { cancelOrderAction, createArtworkAction, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+
+export type Address = {
+  cep: string
+  street: string
+  number: string
+  complement: string
+  neighborhood: string
+  city: string
+  state: string
+}
+
+export const emptyAddress: Address = { cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' }
 
 export type UserView = {
   id: string
@@ -8,6 +20,7 @@ export type UserView = {
   role: 'buyer' | 'artist' | 'admin'
   artistStatus?: 'not-applicable' | 'pending' | 'approved' | 'rejected' | null
   city: string
+  address?: Address
 }
 
 export type ArtworkView = {
@@ -22,6 +35,27 @@ export type ArtworkView = {
   height?: number
   image: string
   status: string
+}
+
+export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled'
+export type PaymentMethod = 'pix' | 'boleto' | 'credit'
+
+export type OrderView = {
+  id: string
+  number: string
+  status: OrderStatus
+  createdAt: string
+  expiresAt: string | null
+  subtotal: number
+  shipping: number
+  total: number
+  deliveryType: 'shipping' | 'pickup'
+  paymentMethod: PaymentMethod | null
+  paymentStatus: string | null
+  items: { artworkId: string; title: string; artistName: string; price: number; image: string }[]
+  address: Address
+  canCancel: boolean
+  canSimulatePayment: boolean
 }
 
 export type ArtistCandidate = {
@@ -43,10 +77,25 @@ const filters = ['Todos', 'Óleo', 'Aquarela', 'Acrílica', 'Pastel', 'Arte Digi
 
 type ImageProps = { src: string; alt: string; fill?: boolean; priority?: boolean; sizes?: string }
 function Image({ src, alt, fill, priority, sizes }: ImageProps) {
-  return <img src={src} alt={alt} sizes={sizes} className={fill ? 'fill-img' : undefined} loading={priority ? 'eager' : 'lazy'} />
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [src])
+  if (failed) return <span className={`img-fallback${fill ? ' fill-img' : ''}`} role="img" aria-label={alt || 'Imagem indisponível'}><Icon name="art" size={28} /></span>
+  return <img src={src} alt={alt} sizes={sizes} className={fill ? 'fill-img' : undefined} loading={priority ? 'eager' : 'lazy'} onError={() => setFailed(true)} />
 }
 
-function Icon({ name, size = 20 }: { name: 'arrow' | 'bag' | 'heart' | 'user' | 'upload' | 'check' | 'close' | 'plus' | 'logout' | 'art' | 'sun' | 'moon'; size?: number }) {
+function Icon({ name, size = 20 }: { name: 'arrow' | 'bag' | 'heart' | 'user' | 'upload' | 'check' | 'close' | 'plus' | 'logout' | 'art' | 'sun' | 'moon' | 'pix' | 'card' | 'barcode'; size?: number }) {
+  if (name === 'pix') {
+    return <svg aria-hidden="true" width={size} height={size} viewBox="535.59 20.81 75.03 84.26" fill="currentColor">
+      <path d="m596.827 86.62c-3.08 0-5.978-1.199-8.156-3.377l-11.777-11.777c-.827-.829-2.268-.827-3.094 0l-11.82 11.82c-2.178 2.178-5.076 3.377-8.156 3.377h-2.321l14.916 14.916c4.658 4.658 12.21 4.658 16.869 0l14.958-14.959Z" />
+      <path d="M553.824 44.963c3.08 0 5.978 1.2 8.156 3.377l11.82 11.822c.85.851 2.24.855 3.094-.001l11.777-11.778c2.178-2.177 5.075-3.377 8.156-3.377h1.419l-14.958-14.959c-4.659-4.658-12.211-4.658-16.87 0l-14.915 14.915Z" />
+      <path d="m610.618 57.379-9.039-9.04a1.75 1.75 0 0 1-.642.13h-4.11a8.07 8.07 0 0 0-5.706 2.364l-11.776 11.777a5.64 5.64 0 0 1-3.997 1.654 5.64 5.64 0 0 1-3.997-1.653L559.53 50.79a8.07 8.07 0 0 0-5.706-2.364h-5.054c-.216 0-.417-.05-.607-.122l-9.075 9.075c-4.659 4.658-4.659 12.21 0 16.869l9.075 9.075c.19-.072.392-.123.607-.123h5.054a8.07 8.07 0 0 0 5.706-2.364l11.82-11.82c2.136-2.134 5.86-2.135 7.995.001l11.776 11.776a8.07 8.07 0 0 0 5.706 2.364h4.11c.227 0 .443.05.642.13l9.039-9.04c4.658-4.658 4.658-12.21 0-16.868Z" />
+    </svg>
+  }
+  if (name === 'barcode') {
+    return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M3 4h1v16H3zm2 0h2v16H5zm3 0h1v16H8zm2.25 0h.75v16h-.75zm2 0h2v16h-2zm3 0H16v16h-.75zm2 0h1.5v16h-1.5zm2.75 0h1v16h-1z" />
+    </svg>
+  }
   const paths: Record<typeof name, ReactNode> = {
     arrow: <path d="m9 18 6-6-6-6" />,
     bag: <><path d="M6 8h12l1 12H5L6 8Z" /><path d="M9 9V6a3 3 0 0 1 6 0v3" /></>,
@@ -60,6 +109,7 @@ function Icon({ name, size = 20 }: { name: 'arrow' | 'bag' | 'heart' | 'user' | 
     art: <><path d="M4 20 14 4l6 16H4Z" /><path d="m8 14 3 2 3-3 3 3" /></>,
     sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41" /></>,
     moon: <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z" />,
+    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M7 15h4" /></>,
   }
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
@@ -72,8 +122,8 @@ function Button({ children, type = 'button', kind = 'dark', onClick, disabled, c
   return <button type={type} onClick={onClick} disabled={disabled} className={`btn btn-${kind} ${className}`}>{children}</button>
 }
 
-function Field({ label, name, type = 'text', placeholder, required, defaultValue }: { label: string; name: string; type?: string; placeholder?: string; required?: boolean; defaultValue?: string }) {
-  return <label className="field"><span>{label}</span><input name={name} type={type} placeholder={placeholder} required={required} defaultValue={defaultValue} /></label>
+function Field({ label, name, type = 'text', placeholder, required, defaultValue, step, min }: { label: string; name: string; type?: string; placeholder?: string; required?: boolean; defaultValue?: string; step?: string; min?: string }) {
+  return <label className="field"><span>{label}</span><input name={name} type={type} placeholder={placeholder} required={required} defaultValue={defaultValue} step={step} min={min} /></label>
 }
 
 function Toast({ message, error = false, onClose }: { message: string; error?: boolean; onClose: () => void }) {
@@ -92,9 +142,12 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
   const [favorites, setFavorites] = useState<string[]>([])
   const [cart, setCart] = useState<ArtworkView[]>([])
   const [cartOpen, setCartOpen] = useState(false)
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [checkoutPreview, setCheckoutPreview] = useState(false)
   const [selectedArt, setSelectedArt] = useState<ArtworkView | null>(null)
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [accountTab, setAccountTab] = useState<'personal' | 'orders'>('personal')
 
   const artworks = initialArtworks
   const filtered = useMemo(() => artworks.filter((art) => art.status === 'published' && (activeFilter === 'Todos' || art.technique === activeFilter)), [artworks, activeFilter])
@@ -107,6 +160,10 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
   useEffect(() => {
     window.localStorage.setItem('galerie-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    setCheckoutPreview(new URLSearchParams(window.location.search).get('checkout') === '1')
+  }, [])
 
   function navigate(next: View) {
     setView(next)
@@ -135,6 +192,36 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
     })
   }
 
+  function enterDemoAccount(role: 'buyer' | 'artist' | 'admin') {
+    startTransition(async () => {
+      const result = await demoLoginAction(role)
+      if (!result.ok) {
+        setMessage({ text: result.message, error: true })
+        return
+      }
+      window.location.reload()
+    })
+  }
+
+  // Grava o pedido no servidor. Se alguma obra acabou de ser vendida, ela sai do carrinho e a vitrine é recarregada.
+  async function placeOrder(input: { address: Address; paymentMethod: PaymentMethod }): Promise<ActionResult> {
+    const result = await createOrderAction({ items: cart.map((item) => item.id), ...input })
+    if (result.ok) {
+      onRefresh()
+    } else if (result.unavailable?.length) {
+      const remaining = cart.filter((item) => !result.unavailable!.includes(item.id))
+      setCart(remaining)
+      onRefresh()
+      if (!remaining.length) {
+        setCheckoutOpen(false)
+        setMessage({ text: result.message, error: true })
+      } else {
+        return { ...result, message: `${result.message} Ela foi removida do seu carrinho.` }
+      }
+    }
+    return result
+  }
+
   function exitAccount() {
     startTransition(async () => {
       await logoutAction()
@@ -142,9 +229,14 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
     })
   }
 
+  if (checkoutPreview) {
+    return <div className={`preview-theme theme-${theme}`}><Checkout defaultAddress={initialUser?.address} items={artworks.slice(0, 1)} placeOrder={async () => ({ ok: true, message: 'Prévia' })} close={() => { setCheckoutPreview(false); window.history.replaceState({}, '', window.location.pathname) }} finish={() => { setCheckoutPreview(false); window.history.replaceState({}, '', window.location.pathname) }} /></div>
+  }
+
   if (!initialUser && view === 'login') {
     return <Login
       submit={enterAccount}
+      quickAccess={enterDemoAccount}
       pending={isPending}
       error={message?.error ? message.text : null}
       createAccount={() => {
@@ -155,12 +247,15 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
   }
 
   if (!initialUser && view === 'register') {
-    return <Register role={registerRole} setRole={setRegisterRole} back={() => navigate('login')} pending={isPending} submit={(data) => run(() => registerAction(data), () => navigate(registerRole === 'artist' ? 'account' : 'shop'))} />
+    return <>
+      <Register role={registerRole} setRole={setRegisterRole} back={() => navigate('login')} pending={isPending} submit={(data) => run(() => registerAction(data), () => navigate(registerRole === 'artist' ? 'account' : 'shop'))} />
+      {message && <Toast message={message.text} error={message.error} onClose={() => setMessage(null)} />}
+    </>
   }
 
   const user = initialUser
   if (!user) {
-    return <Login submit={enterAccount} pending={isPending} error={message?.error ? message.text : null} createAccount={() => navigate('register')} />
+    return <Login submit={enterAccount} quickAccess={enterDemoAccount} pending={isPending} error={message?.error ? message.text : null} createAccount={() => navigate('register')} />
   }
 
   return <div className={`preview-theme theme-${theme}`}>
@@ -171,10 +266,11 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
         <Header user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} cartCount={cart.length} onCart={() => setCartOpen(true)} onAccount={() => navigate('account')} onShop={() => navigate('shop')} onAdd={() => navigate('add-art')} onAdmin={() => navigate('admin')} logout={exitAccount} />
         {view === 'shop' && <Shop user={user} artworks={filtered} total={artworks.length} filter={activeFilter} setFilter={setActiveFilter} favorite={favorites} toggleFavorite={(id) => setFavorites((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} addCart={(art) => { setCart((items) => items.some((item) => item.id === art.id) ? items : [...items, art]); setMessage({ text: `${art.title} foi adicionada ao carrinho.` }) }} select={setSelectedArt} onAdd={() => navigate('add-art')} />}
         {view === 'add-art' && <AddArtwork back={() => navigate('shop')} pending={isPending} submit={(data) => run(() => createArtworkAction(data), () => navigate('shop'))} />}
-        {view === 'account' && <Account user={user} back={() => navigate('shop')} />}
+        {view === 'account' && <Account user={user} initialTab={accountTab} back={() => { setAccountTab('personal'); navigate('shop') }} onOrdersChange={onRefresh} />}
       </div>
     )}
-    {cartOpen && <Cart items={cart} close={() => setCartOpen(false)} remove={(id) => setCart((items) => items.filter((item) => item.id !== id))} />}
+    {cartOpen && <Cart items={cart} close={() => setCartOpen(false)} remove={(id) => setCart((items) => items.filter((item) => item.id !== id))} checkout={() => { setCartOpen(false); setCheckoutOpen(true) }} />}
+    {checkoutOpen && <Checkout defaultAddress={user.address} items={cart} close={() => setCheckoutOpen(false)} placeOrder={placeOrder} finish={() => { setCart([]); setCheckoutOpen(false) }} viewOrders={() => { setCart([]); setCheckoutOpen(false); setAccountTab('orders'); navigate('account') }} />}
     {selectedArt && <ArtModal art={selectedArt} close={() => setSelectedArt(null)} add={() => { setCart((items) => items.some((item) => item.id === selectedArt.id) ? items : [...items, selectedArt]); setSelectedArt(null); setCartOpen(true) }} />}
     {message && <Toast message={message.text} error={message.error} onClose={() => setMessage(null)} />}
   </div>
@@ -205,8 +301,9 @@ function useScrollProgress(ref: { current: HTMLElement | null }) {
 
 const step = (i: number) => ({ '--i': i }) as CSSProperties
 
-function Login({ submit, pending, error, createAccount }: {
+function Login({ submit, quickAccess, pending, error, createAccount }: {
   submit: (data: FormData) => void
+  quickAccess: (role: 'buyer' | 'artist' | 'admin') => void
   pending: boolean
   error: string | null
   createAccount: () => void
@@ -234,7 +331,8 @@ function Login({ submit, pending, error, createAccount }: {
           <h1>Acesse sua conta</h1>
           <p>Entre para comprar, vender suas obras ou acessar a administração.</p>
         </div>
-        <form action={submit} className="login-form reveal" style={step(1)}>
+        <div className="quick-access reveal" style={step(3)}><span>Acesso rápido para visualizar</span><div><button type="button" disabled={pending} onClick={() => quickAccess('buyer')}>Comprador</button><button type="button" disabled={pending} onClick={() => quickAccess('artist')}>Artista / Vendedor</button><button type="button" disabled={pending} onClick={() => quickAccess('admin')}>Administrador</button></div></div>
+        <form onSubmit={(event) => { event.preventDefault(); submit(new FormData(event.currentTarget)) }} className="login-form reveal" style={step(1)}>
           <Field label="E-mail" name="email" type="email" placeholder="seu@email.com" required />
           <Field label="Senha" name="password" type="password" placeholder="Sua senha" required />
           {error && <p className="auth-error">{error}</p>}
@@ -247,12 +345,82 @@ function Login({ submit, pending, error, createAccount }: {
   </main>
 }
 
+const onlyDigits = (value: string) => value.replace(/\D/g, '')
+const formatCep = (value: string) => {
+  const digits = onlyDigits(value).slice(0, 8)
+  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits
+}
+
+type CepStatus = 'idle' | 'loading' | 'found' | 'notfound' | 'error'
+
+// Busca o endereço assim que o CEP chega a 8 dígitos. Respostas antigas são ignoradas.
+function useCepLookup(onFound: (found: CepAddress) => void) {
+  const [status, setStatus] = useState<CepStatus>('idle')
+  const latest = useRef(0)
+  const onFoundRef = useRef(onFound)
+  onFoundRef.current = onFound
+
+  const search = useCallback(async (cep: string) => {
+    const id = ++latest.current
+    if (onlyDigits(cep).length !== 8) {
+      setStatus('idle')
+      return
+    }
+    setStatus('loading')
+    try {
+      const found = await lookupCep(cep)
+      if (id !== latest.current) return
+      if (found) {
+        onFoundRef.current(found)
+        setStatus('found')
+      } else {
+        setStatus('notfound')
+      }
+    } catch {
+      if (id === latest.current) setStatus('error')
+    }
+  }, [])
+
+  return { status, search }
+}
+
+const cepHints: Record<CepStatus, string> = {
+  idle: '',
+  loading: 'Buscando endereço…',
+  found: 'Endereço encontrado. Falta só o número.',
+  notfound: 'CEP não encontrado. Confira ou preencha manualmente.',
+  error: 'Não foi possível buscar o CEP agora. Preencha manualmente.',
+}
+
+// Campos de endereço compartilhados pelo cadastro e pelo checkout.
+function AddressFields({ value, onChange, strict }: { value: Address; onChange: (address: Address) => void; strict: boolean }) {
+  const numberRef = useRef<HTMLInputElement>(null)
+  const current = useRef(value)
+  current.current = value
+  const { status, search } = useCepLookup((found) => {
+    onChange({ ...current.current, ...found })
+    numberRef.current?.focus()
+  })
+  const set = (field: keyof Address, next: string) => onChange({ ...value, [field]: next })
+
+  return <div className="checkout-form-grid address-grid">
+    <label className="field"><span>CEP</span><input name="cep" required={strict} inputMode="numeric" autoComplete="postal-code" maxLength={9} value={value.cep} onChange={(event) => { const cep = formatCep(event.target.value); set('cep', cep); void search(cep) }} placeholder="00000-000" />{status !== 'idle' && <small className={`field-hint ${status === 'found' ? 'is-ok' : status === 'notfound' || status === 'error' ? 'is-error' : ''}`}>{cepHints[status]}</small>}</label>
+    <label className="field span-two"><span>Rua ou avenida</span><input name="street" required={strict} autoComplete="address-line1" value={value.street} onChange={(event) => set('street', event.target.value)} placeholder="Nome da rua" /></label>
+    <label className="field"><span>Número</span><input ref={numberRef} name="number" required={strict} value={value.number} onChange={(event) => set('number', event.target.value)} placeholder="123" /></label>
+    <label className="field"><span>Complemento</span><input name="complement" value={value.complement} onChange={(event) => set('complement', event.target.value)} placeholder="Apartamento, bloco..." /></label>
+    <label className="field"><span>Bairro</span><input name="neighborhood" required={strict} value={value.neighborhood} onChange={(event) => set('neighborhood', event.target.value)} placeholder="Seu bairro" /></label>
+    <label className="field"><span>Cidade</span><input name="city" required value={value.city} onChange={(event) => set('city', event.target.value)} placeholder="Sua cidade" /></label>
+    <label className="field"><span>Estado</span><input name="state" required maxLength={2} value={value.state} onChange={(event) => set('state', event.target.value.toUpperCase())} placeholder="UF" /></label>
+  </div>
+}
+
 function Register({ role, setRole, back, pending, submit }: { role: RegisterRole; setRole: (role: RegisterRole) => void; back: () => void; pending: boolean; submit: (data: FormData) => void }) {
   const [previews, setPreviews] = useState<string[]>([])
+  const [location, setLocation] = useState<Address>(emptyAddress)
   return <main className="register-page"><header><Logo /><button className="back-link" type="button" onClick={back}>← Voltar ao início</button></header><div className="register-wrap">
     <section className="register-copy"><p className="eyebrow">Nova conta</p><h1>{role === 'artist' ? 'Apresente sua arte ao mundo.' : 'Comece sua coleção.'}</h1><p>{role === 'artist' ? 'Envie seus dados e algumas obras. Nossa curadoria analisa seu perfil em até 48 horas.' : 'Preencha seus dados para descobrir obras de artistas independentes.'}</p><div className="role-switch"><button type="button" className={role === 'buyer' ? 'active' : ''} onClick={() => setRole('buyer')}>Comprador</button><button type="button" className={role === 'artist' ? 'active' : ''} onClick={() => setRole('artist')}>Artista</button></div></section>
-    <form action={submit} className="register-form"><input type="hidden" name="role" value={role} /><div className="form-section"><h2>Dados pessoais</h2><div className="form-grid"><Field label="Nome completo" name="name" placeholder="Como devemos chamar você?" required /><Field label="E-mail" name="email" type="email" placeholder="voce@email.com" required /><Field label="Celular" name="phone" placeholder="(11) 99999-9999" /><Field label="CPF" name="cpf" placeholder="000.000.000-00" required /><Field label="Data de nascimento" name="birthDate" type="date" /><Field label="Senha" name="password" type="password" placeholder="Mínimo 8 caracteres" required /></div></div>
-      <div className="form-section"><h2>Localização</h2><div className="form-grid location-grid"><Field label="CEP" name="cep" placeholder="00000-000" /><Field label="Cidade" name="city" placeholder="São Paulo" required /><Field label="UF" name="state" placeholder="SP" required /><Field label="Rua e número" name="address" placeholder="Seu endereço" /></div></div>
+    <form onSubmit={(event) => { event.preventDefault(); submit(new FormData(event.currentTarget)) }} className="register-form"><input type="hidden" name="role" value={role} /><div className="form-section"><h2>Dados pessoais</h2><div className="form-grid"><Field label="Nome completo" name="name" placeholder="Como devemos chamar você?" required /><Field label="E-mail" name="email" type="email" placeholder="voce@email.com" required /><Field label="Celular" name="phone" placeholder="(11) 99999-9999" /><Field label="CPF" name="cpf" placeholder="000.000.000-00" required /><Field label="Data de nascimento" name="birthDate" type="date" /><Field label="Senha" name="password" type="password" placeholder="Mínimo 8 caracteres" required /></div></div>
+      <div className="form-section"><h2>Localização</h2><AddressFields value={location} onChange={setLocation} strict={false} /></div>
       {role === 'artist' && <div className="form-section artist-section"><div><h2>Perfil artístico</h2><p>Essas informações serão exibidas para a curadoria.</p></div><label className="field"><span>Técnica ou estilo principal</span><select name="artStyle" required><option value="">Selecione</option>{filters.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label><label className="field"><span>Sobre sua pesquisa artística</span><textarea name="artistBio" rows={5} required minLength={60} placeholder="Conte sobre sua trajetória, referências e processo criativo…" /></label><label className="portfolio-upload"><input type="file" name="portfolio" accept="image/*" multiple required onChange={(event) => setPreviews(Array.from(event.target.files ?? []).slice(0, 5).map(URL.createObjectURL))} /><Icon name="upload" /><strong>Anexe de 2 a 5 obras do seu portfólio</strong><span>JPG, PNG ou WEBP · até 10 MB por imagem</span></label>{previews.length > 0 && <div className="preview-strip">{previews.map((src, index) => <div key={src}><Image src={src} alt={`Prévia ${index + 1}`} fill sizes="120px" /></div>)}</div>}<div className="review-note"><span>48h</span><p><strong>Análise de curadoria</strong>Você poderá comprar normalmente enquanto seu perfil de vendedor é analisado.</p></div></div>}
       <label className="terms"><input type="checkbox" required /><span>Li e aceito os Termos de Uso e a Política de Privacidade.</span></label><Button type="submit" kind="gold" disabled={pending} className="full">{pending ? 'Enviando…' : role === 'artist' ? 'Enviar para análise' : 'Criar minha conta'}</Button>
     </form>
@@ -284,8 +452,8 @@ function AddArtwork({ back, pending, submit }: { back: () => void; pending: bool
   const [previews, setPreviews] = useState<string[]>([])
   const [submitType, setSubmitType] = useState('published')
   return <main className="editor-page"><button type="button" className="back-link" onClick={back}>← Voltar para a loja</button><div className="editor-heading"><div><p className="eyebrow">Nova publicação</p><h1>Conte a história da sua obra.</h1></div><p>Boas imagens e uma descrição cuidadosa ajudam colecionadores a se conectarem com seu trabalho.</p></div>
-    <form action={submit} className="art-editor"><input type="hidden" name="submitType" value={submitType} /><section className="upload-panel"><div className="section-number">01</div><div className="panel-title"><h2>Imagens da obra</h2><p>Adicione até 5 fotos. A primeira será usada como capa.</p></div><button type="button" className={`art-dropzone ${previews.length ? 'has-preview' : ''}`} onClick={() => fileRef.current?.click()}>{previews.length ? <Image src={previews[0]} alt="Prévia principal da obra" fill sizes="50vw" /> : <><span><Icon name="upload" size={26} /></span><strong>Selecione ou arraste imagens</strong><small>JPG, PNG ou WEBP · máximo 10 MB</small></>}</button><input ref={fileRef} className="sr-only" type="file" name="images" accept="image/*" multiple required onChange={(event) => setPreviews(Array.from(event.target.files ?? []).slice(0, 5).map(URL.createObjectURL))} />{previews.length > 0 && <div className="thumb-row">{previews.map((src, index) => <button type="button" key={src} onClick={() => fileRef.current?.click()}><Image src={src} alt={`Imagem ${index + 1}`} fill sizes="100px" />{index === 0 && <span>Capa</span>}</button>)}{previews.length < 5 && <button type="button" className="add-thumb" onClick={() => fileRef.current?.click()}><Icon name="plus" /></button>}</div>}<div className="photo-tips"><strong>Para uma boa apresentação</strong><ul><li>Use luz natural e fundo neutro</li><li>Fotografe a obra de frente</li><li>Inclua um detalhe da textura</li></ul></div></section>
-      <section className="details-panel"><div className="section-number">02</div><div className="panel-title"><h2>Detalhes da obra</h2><p>Informações que ajudam a contextualizar e vender seu trabalho.</p></div><div className="form-stack"><Field label="Título da obra" name="title" placeholder="Ex.: Entardecer no Cerrado" required /><label className="field"><span>Técnica</span><select name="technique" required><option value="">Selecione uma técnica</option>{filters.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label><div className="form-grid three"><Field label="Largura (cm)" name="width" type="number" placeholder="60" required /><Field label="Altura (cm)" name="height" type="number" placeholder="80" required /><Field label="Ano" name="year" type="number" defaultValue={String(new Date().getFullYear())} required /></div><label className="field"><span>História e processo criativo</span><textarea name="description" rows={6} placeholder="Conte sobre as inspirações, materiais e o processo por trás desta obra…" required /></label><Field label="Valor de venda (R$)" name="price" type="number" placeholder="1200" required /></div><div className="editor-actions"><Button type="submit" kind="outline" disabled={pending} onClick={() => setSubmitType('draft')}>Salvar rascunho</Button><Button type="submit" kind="gold" disabled={pending} onClick={() => setSubmitType('published')}>{pending ? 'Publicando…' : 'Publicar obra'}</Button></div></section>
+    <form onSubmit={(event) => { event.preventDefault(); submit(new FormData(event.currentTarget)) }} className="art-editor"><input type="hidden" name="submitType" value={submitType} /><section className="upload-panel"><div className="section-number">01</div><div className="panel-title"><h2>Imagens da obra</h2><p>Adicione até 5 fotos. A primeira será usada como capa.</p></div><button type="button" className={`art-dropzone ${previews.length ? 'has-preview' : ''}`} onClick={() => fileRef.current?.click()}>{previews.length ? <Image src={previews[0]} alt="Prévia principal da obra" fill sizes="50vw" /> : <><span><Icon name="upload" size={26} /></span><strong>Selecione ou arraste imagens</strong><small>JPG, PNG ou WEBP · máximo 10 MB</small></>}</button><input ref={fileRef} className="sr-only" type="file" name="images" accept="image/*" multiple required onChange={(event) => setPreviews(Array.from(event.target.files ?? []).slice(0, 5).map(URL.createObjectURL))} />{previews.length > 0 && <div className="thumb-row">{previews.map((src, index) => <button type="button" key={src} onClick={() => fileRef.current?.click()}><Image src={src} alt={`Imagem ${index + 1}`} fill sizes="100px" />{index === 0 && <span>Capa</span>}</button>)}{previews.length < 5 && <button type="button" className="add-thumb" onClick={() => fileRef.current?.click()}><Icon name="plus" /></button>}</div>}<div className="photo-tips"><strong>Para uma boa apresentação</strong><ul><li>Use luz natural e fundo neutro</li><li>Fotografe a obra de frente</li><li>Inclua um detalhe da textura</li></ul></div></section>
+      <section className="details-panel"><div className="section-number">02</div><div className="panel-title"><h2>Detalhes da obra</h2><p>Informações que ajudam a contextualizar e vender seu trabalho.</p></div><div className="form-stack"><Field label="Título da obra" name="title" placeholder="Ex.: Entardecer no Cerrado" required /><label className="field"><span>Técnica</span><select name="technique" required><option value="">Selecione uma técnica</option>{filters.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label><div className="form-grid three"><Field label="Largura (cm)" name="width" type="number" placeholder="60" step="0.01" min="0.01" required /><Field label="Altura (cm)" name="height" type="number" placeholder="80" step="0.01" min="0.01" required /><Field label="Ano" name="year" type="number" defaultValue={String(new Date().getFullYear())} required /></div><label className="field"><span>História e processo criativo</span><textarea name="description" rows={6} placeholder="Conte sobre as inspirações, materiais e o processo por trás desta obra…" required /></label><Field label="Valor de venda (R$)" name="price" type="number" placeholder="1200" step="0.01" min="0.01" required /></div><div className="editor-actions"><Button type="submit" kind="outline" disabled={pending} onClick={() => setSubmitType('draft')}>Salvar rascunho</Button><Button type="submit" kind="gold" disabled={pending} onClick={() => setSubmitType('published')}>{pending ? 'Publicando…' : 'Publicar obra'}</Button></div></section>
     </form>
   </main>
 }
@@ -339,13 +507,13 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
         <section className="candidate-detail">{selected ? <><div className="candidate-heading"><div><span className="candidate-avatar large">{selected.name.charAt(0)}</span><div><p className="eyebrow">Candidatura de artista</p><h2>{selected.name}</h2><span>{selected.email} · {selected.city}{selected.state ? `, ${selected.state}` : ''}</span></div></div><small>Enviado em {new Date(selected.createdAt).toLocaleDateString('pt-BR')}</small></div><div className="candidate-bio"><span>Pesquisa artística</span><h3>{selected.artStyle}</h3><p>{selected.artistBio || 'O artista ainda não adicionou uma descrição detalhada.'}</p></div><div className="portfolio-heading"><div><span>Portfólio enviado</span><strong>{selected.portfolio.length} obras</strong></div><p>Clique em uma imagem para ampliar e observar os detalhes.</p></div>{selected.portfolio.length ? <div className="portfolio-grid">{selected.portfolio.map((src, index) => <button type="button" key={src} onClick={() => setLightbox(src)}><Image src={src} alt={`Obra ${index + 1} do portfólio de ${selected.name}`} fill sizes="25vw" /><span>Ampliar</span></button>)}</div> : <div className="portfolio-empty">Nenhuma imagem de portfólio foi anexada.</div>}<label className="field review-field"><span>Observação para o artista (opcional)</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Explique sua decisão ou solicite ajustes…" /></label><div className="review-actions"><Button kind="danger" disabled={pending} onClick={() => decide('rejected')}><Icon name="close" size={17} /> Rejeitar</Button><Button kind="gold" disabled={pending} onClick={() => decide('approved')}><Icon name="check" size={17} /> Aprovar artista</Button></div></> : <div className="review-complete"><span><Icon name="check" size={32} /></span><h2>Curadoria em dia</h2><p>Todos os cadastros foram analisados.</p></div>}</section>
       </div>}
       {tab === 'artists' && <section className="admin-panel"><div className="panel-heading"><div><h2>Artistas ativos</h2><p>{artists.length} perfis disponíveis na plataforma</p></div><label className="admin-search"><span>Buscar</span><input placeholder="Nome ou técnica" /></label></div><div className="artist-admin-grid">{artists.map((artist) => <article key={artist.id}><span className="candidate-avatar large">{artist.name.charAt(0)}</span><div><h3>{artist.name}</h3><p>{artist.style}</p><small>{artist.location}</small></div><dl><div><dt>Obras</dt><dd>{artist.artworks}</dd></div><div><dt>Status</dt><dd className="status-active">Ativo</dd></div></dl><Button kind="outline">Ver perfil</Button></article>)}</div></section>}
-      {tab === 'artworks' && <section className="admin-panel"><div className="panel-heading"><div><h2>Catálogo de obras</h2><p>{artworks.length} obras cadastradas</p></div><Button kind="outline">Exportar lista</Button></div><div className="artwork-admin-table"><div className="table-head"><span>Obra</span><span>Artista</span><span>Técnica</span><span>Valor</span><span>Status</span></div>{artworks.map((artwork) => <article key={artwork.id}><div className="admin-artwork-title"><div>{artwork.image && <Image src={artwork.image} alt="" fill sizes="54px" />}</div><strong>{artwork.title}</strong></div><span>{artwork.artistName}</span><span>{artwork.technique}</span><strong>{currency(artwork.price)}</strong><em>{artwork.status === 'published' ? 'Publicada' : 'Rascunho'}</em></article>)}</div></section>}
+      {tab === 'artworks' && <section className="admin-panel"><div className="panel-heading"><div><h2>Catálogo de obras</h2><p>{artworks.length} obras cadastradas</p></div><Button kind="outline">Exportar lista</Button></div><div className="artwork-admin-table"><div className="table-head"><span>Obra</span><span>Artista</span><span>Técnica</span><span>Valor</span><span>Status</span></div>{artworks.map((artwork) => <article key={artwork.id}><div className="admin-artwork-title"><div>{artwork.image && <Image src={artwork.image} alt="" fill sizes="54px" />}</div><strong>{artwork.title}</strong></div><span>{artwork.artistName}</span><span>{artwork.technique}</span><strong>{currency(artwork.price)}</strong><em>{artworkStatusLabel[artwork.status] ?? artwork.status}</em></article>)}</div></section>}
       {tab === 'reports' && <section className="reports-layout"><div className="report-cards"><article><span>Valor do catálogo</span><strong>{currency(catalogValue)}</strong><small>soma das obras publicadas</small></article><article><span>Preço médio</span><strong>{currency(averagePrice)}</strong><small>por obra cadastrada</small></article><article><span>Média por artista</span><strong>{artists.length ? (artworks.length / artists.length).toFixed(1) : '0'}</strong><small>obras por artista</small></article></div><div className="reports-grid"><section><div className="panel-heading"><div><h2>Obras por técnica</h2><p>Distribuição do catálogo atual</p></div></div><div className="technique-report">{techniques.map((item) => <div key={item.technique}><p><span>{item.technique}</span><strong>{item.count}</strong></p><meter min="0" max={Math.max(...techniques.map((entry) => entry.count), 1)} value={item.count} /></div>)}</div></section><section><div className="panel-heading"><div><h2>Resumo da curadoria</h2><p>Situação dos perfis analisados</p></div></div><div className="curation-summary"><div><span className="summary-dot pending" /><p><strong>{candidates.length}</strong>Pendentes</p></div><div><span className="summary-dot approved" /><p><strong>{artists.length}</strong>Aprovados</p></div><div><span className="summary-dot catalogued" /><p><strong>{artworks.length}</strong>Obras ativas</p></div></div></section></div></section>}
     </section>{lightbox && <div className="lightbox" onClick={() => setLightbox(null)}><button type="button" aria-label="Fechar"><Icon name="close" /></button><div><Image src={lightbox} alt="Obra ampliada do portfólio" fill sizes="90vw" /></div></div>}</main>
 }
 
-function Account({ user, back }: { user: UserView; back: () => void }) {
-  const [tab, setTab] = useState<'personal' | 'addresses' | 'orders' | 'security'>('personal')
+function Account({ user, back, initialTab = 'personal', onOrdersChange }: { user: UserView; back: () => void; initialTab?: 'personal' | 'orders'; onOrdersChange?: () => void }) {
+  const [tab, setTab] = useState<'personal' | 'addresses' | 'orders' | 'security'>(initialTab)
   const tabs = [
     { id: 'personal' as const, label: 'Dados pessoais' },
     { id: 'addresses' as const, label: 'Endereços' },
@@ -357,21 +525,124 @@ function Account({ user, back }: { user: UserView; back: () => void }) {
     <section>
       {tab === 'personal' && <><h2>Dados pessoais</h2><p>Visualize as principais informações do seu perfil.</p><div className="form-grid"><Field label="Nome completo" name="name" defaultValue={user.name} /><Field label="Cidade" name="city" defaultValue={user.city} /><Field label="Perfil" name="role" defaultValue={user.role === 'buyer' ? 'Comprador' : user.role === 'artist' ? 'Artista' : 'Administrador'} /><Field label="Status" name="status" defaultValue="Demonstração ativa" /></div><Button kind="gold">Salvar alterações</Button></>}
       {tab === 'addresses' && <><div className="account-section-heading"><div><h2>Endereços</h2><p>Gerencie os locais usados para entrega das suas obras.</p></div><Button kind="outline">Adicionar endereço</Button></div><div className="account-empty"><span><Icon name="user" size={25} /></span><h3>Nenhum endereço cadastrado</h3><p>Quando você adicionar um endereço, ele aparecerá aqui para facilitar suas próximas compras.</p><Button kind="gold">Cadastrar primeiro endereço</Button></div></>}
-      {tab === 'orders' && <><h2>Meus pedidos</h2><p>Acompanhe suas compras e consulte pedidos anteriores.</p><div className="account-empty"><span><Icon name="bag" size={25} /></span><h3>Você ainda não fez nenhum pedido</h3><p>As obras compradas e o andamento das entregas aparecerão nesta área.</p><Button kind="gold" onClick={back}>Explorar obras</Button></div></>}
+      {tab === 'orders' && <OrdersPanel back={back} onChange={onOrdersChange} />}
       {tab === 'security' && <><h2>Segurança</h2><p>Opções para proteger o acesso à sua conta.</p><div className="security-list"><article><div><strong>Senha de acesso</strong><span>Nenhuma senha configurada no modo de demonstração.</span></div><Button kind="outline">Configurar senha</Button></article><article><div><strong>Verificação em duas etapas</strong><span>Adicione uma camada extra de proteção ao seu perfil.</span></div><button type="button" className="status-control">Desativada</button></article><article><div><strong>Sessões conectadas</strong><span>Este é o único acesso de demonstração ativo.</span></div><Button kind="outline">Ver sessões</Button></article></div><div className="security-note"><Icon name="check" size={18} /><p><strong>Ambiente de demonstração</strong>Nenhuma alteração de segurança será salva neste momento.</p></div></>}
     </section>
   </div></main>
 }
 
-function Cart({ items, close, remove }: { items: ArtworkView[]; close: () => void; remove: (id: string) => void }) {
+const orderStatusLabel: Record<OrderStatus, string> = { pending: 'Aguardando pagamento', paid: 'Pago', shipped: 'Enviado', delivered: 'Entregue', cancelled: 'Cancelado' }
+const paymentMethodLabel: Record<PaymentMethod, string> = { pix: 'Pix', boleto: 'Boleto', credit: 'Cartão de crédito' }
+const dateTime = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+function OrdersPanel({ back, onChange }: { back: () => void; onChange?: () => void }) {
+  const [orders, setOrders] = useState<OrderView[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      setOrders(await listOrders())
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  async function act(id: string, action: (id: string) => Promise<ActionResult>) {
+    setBusy(id)
+    const result = await action(id)
+    setNotice({ text: result.message, error: !result.ok })
+    setBusy(null)
+    await load()
+    onChange?.() // a vitrine muda quando uma obra volta ou é vendida
+  }
+
+  if (failed) return <><h2>Meus pedidos</h2><div className="account-empty"><h3>Não foi possível carregar seus pedidos</h3><p>Verifique sua conexão e tente novamente.</p><Button kind="gold" onClick={() => void load()}>Tentar novamente</Button></div></>
+  if (!orders) return <><h2>Meus pedidos</h2><p>Carregando…</p></>
+  if (!orders.length) return <><h2>Meus pedidos</h2><p>Acompanhe suas compras e consulte pedidos anteriores.</p><div className="account-empty"><span><Icon name="bag" size={25} /></span><h3>Você ainda não fez nenhum pedido</h3><p>As obras compradas e o andamento das entregas aparecerão nesta área.</p><Button kind="gold" onClick={back}>Explorar obras</Button></div></>
+
+  return <><h2>Meus pedidos</h2><p>Acompanhe suas compras e consulte pedidos anteriores.</p>
+    {notice && <p className={`orders-notice ${notice.error ? 'is-error' : 'is-ok'}`} role="status">{notice.text}</p>}
+    <div className="orders-list">{orders.map((order) => <article className="order-card" key={order.id}>
+      <header><div><strong>Pedido {order.number}</strong><span>{dateTime(order.createdAt)}</span></div><em className={`order-status status-${order.status}`}>{orderStatusLabel[order.status]}</em></header>
+      <div className="order-items">{order.items.map((item) => <div key={item.artworkId}><div className="order-thumb"><Image src={item.image} alt={item.title} fill sizes="64px" /></div><p><strong>{item.title}</strong><span>{item.artistName}</span></p><b>{currency(item.price)}</b></div>)}</div>
+      <dl className="order-info">
+        <div><dt>Pagamento</dt><dd>{order.paymentMethod ? paymentMethodLabel[order.paymentMethod] : '—'}</dd></div>
+        <div><dt>Entrega</dt><dd>{order.address.street}, {order.address.number} · {order.address.city}/{order.address.state}</dd></div>
+        <div><dt>Total</dt><dd><strong>{currency(order.total)}</strong></dd></div>
+      </dl>
+      {order.status === 'pending' && order.expiresAt && <p className="order-deadline">Reservado até {dateTime(order.expiresAt)}. Depois disso o pedido é cancelado e a obra volta à vitrine.</p>}
+      {(order.canSimulatePayment || order.canCancel) && <div className="order-actions">
+        {order.canSimulatePayment && <Button kind="gold" disabled={busy === order.id} onClick={() => void act(order.id, simulatePaymentAction)}>Simular pagamento (teste)</Button>}
+        {order.canCancel && <Button kind="outline" disabled={busy === order.id} onClick={() => { if (window.confirm('Cancelar este pedido? As obras voltam para a vitrine.')) void act(order.id, cancelOrderAction) }}>Cancelar pedido</Button>}
+      </div>}
+    </article>)}</div></>
+}
+
+function Cart({ items, close, remove, checkout }: { items: ArtworkView[]; close: () => void; remove: (id: string) => void; checkout: () => void }) {
   const total = items.reduce((sum, item) => sum + item.price, 0)
-  return <div className="drawer-backdrop" onClick={close}><aside className="cart-drawer" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Sua seleção</p><h2>Carrinho <span>{items.length}</span></h2></div><button type="button" onClick={close}><Icon name="close" /></button></header><div className="cart-items">{items.length ? items.map((item) => <article key={item.id}><div><Image src={item.image} alt={item.title} fill sizes="100px" /></div><p><strong>{item.title}</strong><span>{item.artistName}</span><b>{currency(item.price)}</b></p><button type="button" onClick={() => remove(item.id)}>Remover</button></article>) : <div className="cart-empty"><Icon name="bag" size={32} /><h3>Seu carrinho está vazio</h3><p>Explore a galeria e encontre uma obra para chamar de sua.</p><Button kind="outline" onClick={close}>Explorar obras</Button></div>}</div>{items.length > 0 && <footer><div><span>Subtotal</span><strong>{currency(total)}</strong></div><p>Frete e prazo calculados na próxima etapa.</p><Button kind="gold" className="full">Continuar compra</Button></footer>}</aside></div>
+  return <div className="drawer-backdrop" onClick={close}><aside className="cart-drawer" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Sua seleção</p><h2>Carrinho <span>{items.length}</span></h2></div><button type="button" onClick={close}><Icon name="close" /></button></header><div className="cart-items">{items.length ? items.map((item) => <article key={item.id}><div><Image src={item.image} alt={item.title} fill sizes="100px" /></div><p><strong>{item.title}</strong><span>{item.artistName}</span><b>{currency(item.price)}</b></p><button type="button" onClick={() => remove(item.id)}>Remover</button></article>) : <div className="cart-empty"><Icon name="bag" size={32} /><h3>Seu carrinho está vazio</h3><p>Explore a galeria e encontre uma obra para chamar de sua.</p><Button kind="outline" onClick={close}>Explorar obras</Button></div>}</div>{items.length > 0 && <footer><div><span>Subtotal</span><strong>{currency(total)}</strong></div><p>Frete e prazo calculados na próxima etapa.</p><Button kind="gold" className="full" onClick={checkout}>Continuar compra</Button></footer>}</aside></div>
+}
+
+function Checkout({ items, close, finish, viewOrders, placeOrder, defaultAddress }: { items: ArtworkView[]; close: () => void; finish: () => void; viewOrders?: () => void; placeOrder: (input: { address: Address; paymentMethod: PaymentMethod }) => Promise<ActionResult>; defaultAddress?: Address }) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  const [payment, setPayment] = useState<'pix' | 'boleto' | 'credit'>('pix')
+  const [installments, setInstallments] = useState('1')
+  const [processing, setProcessing] = useState(false)
+  const [accepted, setAccepted] = useState(false)
+  const [address, setAddress] = useState<Address>(() => ({ ...emptyAddress, ...defaultAddress }))
+  const [card, setCard] = useState({ name: '', number: '', expiry: '', cvv: '' })
+  const [orderNumber] = useState(() => `NG-${String(Date.now()).slice(-6)}`)
+  const [placed, setPlaced] = useState<OrderView | null>(null)
+  const [orderError, setOrderError] = useState('')
+  const total = items.reduce((sum, item) => sum + item.price, 0)
+  const installmentCount = Number(installments)
+  const paymentLabel = payment === 'pix' ? 'Pix' : payment === 'boleto' ? 'Boleto' : 'Cartão de crédito'
+  const paymentDetail = payment === 'pix' ? 'Confirmação imediata' : payment === 'boleto' ? 'Aprovação em 1 a 2 dias úteis' : `${installments}x de ${currency(total / installmentCount)}`
+
+  async function submitOrder() {
+    setProcessing(true)
+    setOrderError('')
+    const result = await placeOrder({ address, paymentMethod: payment })
+    setProcessing(false)
+    if (result.ok) {
+      setPlaced(result.order ?? null)
+      setStep(4)
+    } else {
+      setOrderError(result.message)
+    }
+  }
+
+  function updateCard(field: keyof typeof card, value: string) {
+    setCard((current) => ({ ...current, [field]: value }))
+  }
+
+  if (step === 4) {
+    return <div className="checkout-overlay"><section className="checkout-success"><div className="success-burst" aria-hidden="true">{Array.from({ length: 12 }).map((_, index) => <span key={index} />)}</div><div className="success-check"><Icon name="check" size={42} /></div><p className="eyebrow">Pedido registrado</p><h2>Sua nova obra já faz parte da sua história.</h2><p>Pedido <strong>{placed?.number ?? orderNumber}</strong> registrado e aguardando pagamento. As obras ficam reservadas para você até o prazo do pedido.</p><p className="success-note">Ambiente de demonstração: nada é cobrado. Em “Meus pedidos” você acompanha o pedido e pode simular o pagamento.</p><div className="success-details"><span>Pagamento</span><strong>{payment === 'credit' ? `${paymentLabel} · ${installments}x` : paymentLabel}</strong><span>Total</span><strong>{currency(total)}</strong></div><div className="success-actions">{viewOrders && <Button kind="gold" onClick={viewOrders}>Ver meus pedidos</Button>}<Button kind={viewOrders ? 'outline' : 'gold'} onClick={finish}>Voltar para a galeria</Button></div></section></div>
+  }
+
+  return <div className="checkout-overlay"><section className="checkout-shell">
+    <header className="checkout-header"><Logo /><div className="checkout-steps">{['Entrega', 'Pagamento', 'Revisão'].map((label, index) => { const number = index + 1; return <div key={label} className={step === number ? 'active' : step > number ? 'complete' : ''}><span>{step > number ? <Icon name="check" size={14} /> : number}</span><p>{label}</p></div> })}</div><button type="button" className="checkout-close" onClick={close} aria-label="Fechar checkout"><Icon name="close" /></button></header>
+    <div className="checkout-body"><main className="checkout-content">
+      {step === 1 && <form onSubmit={(event) => { event.preventDefault(); setStep(2) }}><div className="checkout-title"><p className="eyebrow">Etapa 01</p><h2>Onde sua obra será entregue?</h2><p>Preencha o endereço que será usado para calcular e acompanhar a entrega.</p></div><AddressFields value={address} onChange={setAddress} strict /><div className="checkout-actions"><Button kind="ghost" onClick={close}>Voltar ao carrinho</Button><Button type="submit" kind="gold">Continuar para pagamento <Icon name="arrow" size={16} /></Button></div></form>}
+      {step === 2 && <form onSubmit={(event) => { event.preventDefault(); setStep(3) }}><div className="checkout-title"><p className="eyebrow">Etapa 02</p><h2>Escolha como pagar</h2><p>Esta é uma simulação visual. Nenhuma cobrança ou dado financeiro será processado.</p></div><div className="payment-group"><h3>Recomendados</h3><div className="payment-options"><button type="button" className={payment === 'pix' ? 'active' : ''} onClick={() => setPayment('pix')}><span className="payment-radio" /><span className="payment-icon pix"><Icon name="pix" size={27} /></span><div><strong>Pix</strong><small>Aprovação imediata</small></div></button><button type="button" className={payment === 'boleto' ? 'active' : ''} onClick={() => setPayment('boleto')}><span className="payment-radio" /><span className="payment-icon"><Icon name="barcode" size={27} /></span><div><strong>Boleto</strong><small>Aprovação em 1 a 2 dias úteis</small></div></button></div></div><div className="payment-group"><h3>Cartões</h3><div className="payment-options"><button type="button" className={payment === 'credit' ? 'active' : ''} onClick={() => setPayment('credit')}><span className="payment-radio" /><span className="payment-icon"><Icon name="card" size={27} /></span><div><strong>Cartão de crédito</strong><small>Parcele sua compra em até 12 vezes</small></div></button></div></div>{payment === 'pix' ? <div className="payment-info-panel"><span className="payment-icon pix"><Icon name="pix" size={28} /></span><div><h3>Pagamento rápido e seguro</h3><p>O QR Code seria gerado após a confirmação. Para este projeto, a etapa é apenas demonstrativa.</p></div></div> : payment === 'boleto' ? <div className="payment-info-panel"><span className="payment-icon"><Icon name="barcode" size={28} /></span><div><h3>Boleto bancário</h3><p>O código de barras seria gerado ao finalizar. A confirmação pode levar de 1 a 2 dias úteis.</p></div></div> : <div className="card-fields"><label className="field span-two"><span>Nome impresso no cartão</span><input required value={card.name} onChange={(event) => updateCard('name', event.target.value)} placeholder="Nome completo" /></label><label className="field span-two"><span>Número do cartão</span><input required inputMode="numeric" value={card.number} onChange={(event) => updateCard('number', event.target.value)} placeholder="0000 0000 0000 0000" /></label><label className="field"><span>Validade</span><input required value={card.expiry} onChange={(event) => updateCard('expiry', event.target.value)} placeholder="MM/AA" /></label><label className="field"><span>CVV</span><input required inputMode="numeric" maxLength={4} value={card.cvv} onChange={(event) => updateCard('cvv', event.target.value)} placeholder="123" /></label><label className="field span-two"><span>Parcelamento</span><select value={installments} onChange={(event) => setInstallments(event.target.value)}>{Array.from({ length: 12 }).map((_, index) => { const count = index + 1; return <option key={count} value={count}>{count}x de {currency(total / count)}{count === 1 ? ' à vista' : ''}</option> })}</select></label></div>}<div className="checkout-actions"><Button kind="ghost" onClick={() => setStep(1)}>Voltar</Button><Button type="submit" kind="gold">Revisar pedido <Icon name="arrow" size={16} /></Button></div></form>}
+      {step === 3 && <div><div className="checkout-title"><p className="eyebrow">Etapa 03</p><h2>Revise antes de finalizar</h2><p>Confira os dados da entrega e a forma de pagamento escolhida.</p></div><div className="review-block"><div><span>Endereço de entrega</span><button type="button" onClick={() => setStep(1)}>Editar</button></div><p><strong>{address.street}, {address.number}</strong>{address.complement && ` · ${address.complement}`}<br />{address.neighborhood} · {address.city}/{address.state}<br />CEP {address.cep}</p></div><div className="review-block"><div><span>Forma de pagamento</span><button type="button" onClick={() => setStep(2)}>Editar</button></div><p><strong>{paymentLabel}</strong><br />{paymentDetail}</p></div><label className="checkout-terms"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} /><span>Confirmo que revisei os dados e aceito os termos da compra demonstrativa.</span></label>{orderError && <p className="checkout-error" role="alert">{orderError}</p>}<div className="checkout-actions"><Button kind="ghost" onClick={() => setStep(2)}>Voltar</Button><Button kind="gold" disabled={processing || !accepted} onClick={submitOrder}>{processing ? 'Finalizando…' : 'Finalizar compra'} <Icon name="check" size={16} /></Button></div></div>}
+    </main><aside className="checkout-summary"><p className="eyebrow">Resumo do pedido</p><h3>{items.length} {items.length === 1 ? 'obra selecionada' : 'obras selecionadas'}</h3><div className="summary-items">{items.map((item) => <article key={item.id}><div>{item.image && <Image src={item.image} alt={item.title} fill sizes="64px" />}</div><p><strong>{item.title}</strong><span>{item.artistName}</span><b>{currency(item.price)}</b></p></article>)}</div><dl><div><dt>Subtotal</dt><dd>{currency(total)}</dd></div><div><dt>Entrega</dt><dd>Grátis</dd></div>{step > 1 && <div><dt>Pagamento</dt><dd>{paymentLabel}</dd></div>}<div className="summary-total"><dt>Total</dt><dd>{currency(total)}</dd></div></dl><p className="secure-purchase"><Icon name="check" size={15} /> Ambiente de demonstração seguro</p></aside></div>
+  </section></div>
 }
 
 function ArtModal({ art, close, add }: { art: ArtworkView; close: () => void; add: () => void }) {
   return <div className="modal-backdrop" onClick={close}><div className="art-modal" onClick={(event) => event.stopPropagation()}><button type="button" className="modal-close" onClick={close}><Icon name="close" /></button><div className="modal-image"><Image src={art.image} alt={art.title} fill sizes="60vw" /></div><div className="modal-copy"><p className="eyebrow">{art.technique} · {art.year}</p><h2>{art.title}</h2><span>por {art.artistName}</span><p>{art.description}</p>{art.width && art.height && <dl><div><dt>Dimensões</dt><dd>{art.width} × {art.height} cm</dd></div><div><dt>Autenticidade</dt><dd>Certificado incluso</dd></div></dl>}<strong>{currency(art.price)}</strong><Button kind="gold" className="full" onClick={add}>Adicionar ao carrinho</Button></div></div></div>
 }
 
+const artworkStatusLabel: Record<string, string> = { published: 'Publicada', draft: 'Rascunho', reserved: 'Reservada', sold: 'Vendida' }
+
 function currency(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value)
+  // Valores redondos aparecem sem centavos (R$ 880); os demais mostram os centavos (R$ 1.250,50).
+  const digits = Number.isInteger(value) ? 0 : 2
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
 }
