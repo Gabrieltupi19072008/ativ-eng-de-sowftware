@@ -114,3 +114,11 @@ O `smoke_sqlserver.py` cadastra comprador e artista, aprova, publica obra, faz p
 - O bloqueio de tentativas fica na memória do processo: com vários servidores ou reinício, ele zera.
 - O `pytest` roda em SQLite. O SQL Server foi validado com o `smoke_sqlserver.py` (SQL Server 2022 em Docker no Apple Silicon): scripts `sql/`, `seed.py` e todas as rotas atuais funcionaram.
 - Para o front em outro domínio (produção), use `COOKIE_SECURE=true` e `COOKIE_SAMESITE=none` e HTTPS.
+
+## E-mail (recuperação de senha)
+
+Sem `BREVO_API_KEY` nem `SMTP_HOST` no `.env`, o e-mail **não é enviado**: em desenvolvimento o texto (com o link) aparece no terminal da API.
+**Recomendado: Brevo (API por HTTPS).** Plano grátis; basta verificar um e-mail remetente (um Gmail serve), sem domínio próprio, e funciona em hospedagens que bloqueiam SMTP. No `.env`: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` (o e-mail verificado em Brevo > Senders) e `BREVO_SENDER_NAME`. Se houver chave do Brevo, ela tem prioridade sobre o SMTP.
+Alternativa SMTP: preencha no `backend/.env` (modelo no `.env.example`): `SMTP_HOST`, `SMTP_PORT` (587 usa STARTTLS, 465 usa SSL), `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
+Exemplo com Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=seu@gmail.com`, `SMTP_PASSWORD=` a **senha de app** de 16 letras (não a senha normal; exige verificação em duas etapas ligada na conta Google).
+Teste o envio sem criar conta: `.venv/bin/python scripts/test_email.py seu@email.com` (mostra o motivo se falhar). Reinicie a API depois de mexer no `.env`.

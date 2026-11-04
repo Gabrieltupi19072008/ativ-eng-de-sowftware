@@ -40,6 +40,10 @@ FAKE_PAYMENTS = _bool("FAKE_PAYMENTS", ENVIRONMENT.lower() == "development") and
 # Recuperação de senha. Sem SMTP_HOST o e-mail não é enviado: em desenvolvimento o link aparece no terminal da API.
 FRONTEND_URL = os.getenv("FRONTEND_URL", CORS_ORIGINS[0] if CORS_ORIGINS else "http://localhost:5173").rstrip("/")
 RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "60"))
+# Brevo (API por HTTPS, porta 443) é o provedor preferido: hospedagens grátis costumam bloquear as portas de SMTP.
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "")  # precisa estar verificado no Brevo (Senders)
+BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "Nambá Galerie")
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")

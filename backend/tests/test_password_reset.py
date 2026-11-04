@@ -84,3 +84,65 @@ def test_mailer_without_smtp_only_logs(caplog):
     with caplog.at_level("WARNING", logger="uvicorn.error"):
         mailer.send_mail("a@example.com", "Assunto", "Corpo do e-mail")
     assert "Corpo do e-mail" in caplog.text
+
+
+def test_mailer_picks_ssl_or_starttls_by_port(monkeypatch):
+    calls = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            calls.append(("plain", host, port))
+        def starttls(self): calls.append(("starttls",))
+        def login(self, user, password): calls.append(("login", user))
+        def send_message(self, message): calls.append(("send", message["To"]))
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    class FakeSSL(FakeSMTP):
+        def __init__(self, host, port, timeout):
+            calls.append(("ssl", host, port))
+
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(mailer.smtplib, "SMTP_SSL", FakeSSL)
+    monkeypatch.setattr(mailer.config, "SMTP_HOST", "smtp.exemplo.com")
+    monkeypatch.setattr(mailer.config, "SMTP_USER", "eu@exemplo.com")
+    monkeypatch.setattr(mailer.config, "SMTP_PASSWORD", "x")
+
+    monkeypatch.setattr(mailer.config, "SMTP_PORT", 587)
+    mailer.send_mail("a@example.com", "Assunto", "Corpo")
+    assert calls == [("plain", "smtp.exemplo.com", 587), ("starttls",), ("login", "eu@exemplo.com"), ("send", "a@example.com")]
+
+    calls.clear()
+    monkeypatch.setattr(mailer.config, "SMTP_PORT", 465)
+    mailer.send_mail("a@example.com", "Assunto", "Corpo")
+    assert calls == [("ssl", "smtp.exemplo.com", 465), ("login", "eu@exemplo.com"), ("send", "a@example.com")]
+
+
+def test_mailer_uses_brevo_api_when_key_is_set(monkeypatch):
+    import json
+    sent = []
+
+    class FakeResponse:
+        def close(self): pass
+
+    def fake_urlopen(request, timeout):
+        sent.append((request.full_url, request.get_header("Api-key"), json.loads(request.data), timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mailer.config, "BREVO_API_KEY", "chave-falsa")
+    monkeypatch.setattr(mailer.config, "BREVO_SENDER_EMAIL", "galeria@example.com")
+    monkeypatch.setattr(mailer.config, "SMTP_HOST", "")  # o Brevo vale mesmo sem SMTP
+    mailer.send_mail("a@example.com", "Assunto", "Corpo")
+    url, key, payload, timeout = sent[0]
+    assert url == "https://api.brevo.com/v3/smtp/email" and key == "chave-falsa" and timeout <= 10
+    assert payload["to"] == [{"email": "a@example.com"}] and payload["sender"]["email"] == "galeria@example.com"
+    assert payload["textContent"] == "Corpo"
+
+
+def test_mailer_failure_never_breaks_the_request(monkeypatch, caplog):
+    monkeypatch.setattr(mailer.config, "SMTP_HOST", "smtp.exemplo.com")
+    monkeypatch.setattr(mailer, "deliver", lambda *args: (_ for _ in ()).throw(OSError("sem rede")))
+    with caplog.at_level("ERROR", logger="uvicorn.error"):
+        mailer.send_mail("a@example.com", "Assunto", "Corpo")  # não levanta erro
+    assert "Falha ao enviar e-mail" in caplog.text
