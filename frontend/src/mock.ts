@@ -120,6 +120,17 @@ export async function listCandidates(): Promise<ArtistCandidate[]> {
     }))
 }
 
+export async function listApprovedArtists(): Promise<ArtistCandidate[]> {
+  const me = await currentUser()
+  if (me?.role !== 'admin') return []
+  return readDb().users
+    .filter((u) => u.role === 'artist' && u.artistStatus === 'approved')
+    .map((u) => ({
+      id: u.id, name: u.name, email: u.email, city: u.city || 'Localização não informada', state: u.state ?? '',
+      artStyle: u.artStyle ?? 'Estilo não informado', artistBio: u.artistBio ?? '', createdAt: u.createdAt, portfolio: u.portfolio,
+    }))
+}
+
 // ---------- ações ----------
 export async function loginAction(data: FormData): Promise<ActionResult> {
   const email = text(data, 'email').toLowerCase()

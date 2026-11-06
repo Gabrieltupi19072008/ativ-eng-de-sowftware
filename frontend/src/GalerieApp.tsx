@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react'
-import { forgotPasswordAction, listFavorites, listPublicArtists, resetPasswordAction, setFavoriteAction, changePasswordAction, deleteAddressAction, listAddresses, saveAddressAction, updateProfileAction, cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
+import { forgotPasswordAction, listApprovedArtists, listFavorites, listPublicArtists, resetPasswordAction, setFavoriteAction, changePasswordAction, deleteAddressAction, listAddresses, saveAddressAction, updateProfileAction, cancelOrderAction, createArtworkAction, deleteArtworkAction, setArtworkVisibilityAction, updateArtworkAction, deliverOrderAction, shipOrderAction, getReports, listAdminOrders, listSales, createOrderAction, demoLoginAction, listOrders, loginAction, logoutAction, registerAction, reviewArtistAction, simulatePaymentAction, lookupCep, type ActionResult, type CepAddress } from './api'
 
 export type Address = {
   cep: string
@@ -536,13 +536,9 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
   const [tab, setTab] = useState<'approvals' | 'artists' | 'artworks' | 'orders' | 'reports'>('approvals')
   const [candidates, setCandidates] = useState(initial)
   const [selected, setSelected] = useState<ArtistCandidate | null>(initial[0] ?? null)
-  const [artists, setArtists] = useState(() => Array.from(new Set(artworks.map((art) => art.artistName))).map((name, index) => ({
-    id: `catalog-artist-${index}`,
-    name,
-    style: artworks.find((art) => art.artistName === name)?.technique ?? 'Técnica mista',
-    location: ['São Paulo · SP', 'Rio de Janeiro · RJ', 'Belo Horizonte · MG', 'Curitiba · PR', 'Recife · PE', 'Brasília · DF'][index % 6],
-    artworks: artworks.filter((art) => art.artistName === name).length,
-  })))
+  const [artists, setArtists] = useState<ArtistCandidate[] | null>(null)
+  const [artistSearch, setArtistSearch] = useState('')
+  const [openProfile, setOpenProfile] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [reports, setReports] = useState<ReportsView | null>(null)
@@ -550,15 +546,17 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
   const [dataFailed, setDataFailed] = useState(false)
   const loadData = useCallback(async () => {
     try {
-      const [nextReports, nextOrders] = await Promise.all([getReports(), listAdminOrders()])
+      const [nextReports, nextOrders, nextArtists] = await Promise.all([getReports(), listAdminOrders(), listApprovedArtists()])
       setReports(nextReports)
       setAdminOrders(nextOrders)
+      setArtists(nextArtists)
       setDataFailed(false)
     } catch {
       setDataFailed(true)
     }
   }, [])
-  useEffect(() => { if (tab === 'orders' || tab === 'reports') void loadData() }, [tab, loadData])
+  useEffect(() => { if (tab === 'orders' || tab === 'reports' || tab === 'artists') void loadData() }, [tab, loadData])
+  useEffect(() => { listApprovedArtists().then(setArtists).catch(() => setDataFailed(true)) }, [])
   const headings = {
     approvals: ['Curadoria de artistas', 'Analise novas solicitações e seus portfólios.'],
     artists: ['Todos os artistas', 'Acompanhe os artistas ativos na Nambá Galerie.'],
@@ -591,13 +589,7 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
     if (!selected) return
     review(selected.id, decision, note)
     if (decision === 'approved') {
-      setArtists((current) => current.some((artist) => artist.name === selected.name) ? current : [...current, {
-        id: selected.id,
-        name: selected.name,
-        style: selected.artStyle,
-        location: `${selected.city}${selected.state ? ` · ${selected.state}` : ''}`,
-        artworks: 0,
-      }])
+      setArtists((current) => current && !current.some((artist) => artist.id === selected.id) ? [...current, selected] : current)
     }
     const next = candidates.filter((item) => item.id !== selected.id)
     setCandidates(next)
@@ -605,11 +597,17 @@ function Admin({ candidates: initial, artworks, user, theme, toggleTheme, back, 
     setNote('')
   }
   return <main className="admin-page"><aside className="admin-sidebar"><Logo light /><div className="admin-user"><span>{user.name.charAt(0)}</span><p><strong>{user.name}</strong><small>Curadoria Nambá</small></p></div><nav><button className={tab === 'approvals' ? 'active' : ''} type="button" onClick={() => setTab('approvals')}><span>01</span>Aprovações <b>{candidates.length}</b></button><button className={tab === 'artists' ? 'active' : ''} type="button" onClick={() => setTab('artists')}><span>02</span>Artistas</button><button className={tab === 'artworks' ? 'active' : ''} type="button" onClick={() => setTab('artworks')}><span>03</span>Obras</button><button className={tab === 'orders' ? 'active' : ''} type="button" onClick={() => setTab('orders')}><span>04</span>Pedidos</button><button className={tab === 'reports' ? 'active' : ''} type="button" onClick={() => setTab('reports')}><span>05</span>Relatórios</button></nav><button type="button" className="admin-theme-toggle" onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} /> Modo {theme === 'dark' ? 'claro' : 'escuro'}</button><button type="button" className="sidebar-exit" onClick={logout}><Icon name="logout" size={18} /> Sair</button></aside>
-    <section className="admin-main"><header><div><p className="eyebrow">Painel administrativo</p><h1>{headings[tab][0]}</h1><p className="admin-subtitle">{headings[tab][1]}</p></div><Button kind="outline" onClick={back}>Visualizar loja</Button></header><div className="admin-stats"><article><span>Pendentes</span><strong>{candidates.length}</strong><small>aguardando análise</small></article><article><span>Aprovados</span><strong>{artists.length}</strong><small>artistas ativos</small></article><article><span>Obras</span><strong>{artworks.length}</strong><small>no catálogo</small></article></div>
+    <section className="admin-main"><header><div><p className="eyebrow">Painel administrativo</p><h1>{headings[tab][0]}</h1><p className="admin-subtitle">{headings[tab][1]}</p></div><Button kind="outline" onClick={back}>Visualizar loja</Button></header><div className="admin-stats"><article><span>Pendentes</span><strong>{candidates.length}</strong><small>aguardando análise</small></article><article><span>Aprovados</span><strong>{artists?.length ?? '—'}</strong><small>artistas ativos</small></article><article><span>Obras</span><strong>{artworks.length}</strong><small>no catálogo</small></article></div>
       {tab === 'approvals' && <div className="review-layout"><section className="candidate-list"><div className="list-heading"><h2>Novas solicitações</h2><span>{candidates.length}</span></div>{candidates.length ? candidates.map((candidate) => <button type="button" key={candidate.id} className={selected?.id === candidate.id ? 'active' : ''} onClick={() => setSelected(candidate)}><span className="candidate-avatar">{candidate.name.charAt(0)}</span><div><strong>{candidate.name}</strong><small>{candidate.artStyle}</small><em>{candidate.city}{candidate.state ? ` · ${candidate.state}` : ''}</em></div><Icon name="arrow" size={17} /></button>) : <div className="list-empty"><Icon name="check" /><p>Fila concluída</p><small>Não há artistas aguardando análise.</small></div>}</section>
         <section className="candidate-detail">{selected ? <><div className="candidate-heading"><div><span className="candidate-avatar large">{selected.name.charAt(0)}</span><div><p className="eyebrow">Candidatura de artista</p><h2>{selected.name}</h2><span>{selected.email} · {selected.city}{selected.state ? `, ${selected.state}` : ''}</span></div></div><small>Enviado em {new Date(selected.createdAt).toLocaleDateString('pt-BR')}</small></div><div className="candidate-bio"><span>Pesquisa artística</span><h3>{selected.artStyle}</h3><p>{selected.artistBio || 'O artista ainda não adicionou uma descrição detalhada.'}</p></div><div className="portfolio-heading"><div><span>Portfólio enviado</span><strong>{selected.portfolio.length} obras</strong></div><p>Clique em uma imagem para ampliar e observar os detalhes.</p></div>{selected.portfolio.length ? <div className="portfolio-grid">{selected.portfolio.map((src, index) => <button type="button" key={src} onClick={() => setLightbox(src)}><Image src={src} alt={`Obra ${index + 1} do portfólio de ${selected.name}`} fill sizes="25vw" /><span>Ampliar</span></button>)}</div> : <div className="portfolio-empty">Nenhuma imagem de portfólio foi anexada.</div>}<label className="field review-field"><span>Observação para o artista (opcional)</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Explique sua decisão ou solicite ajustes…" /></label><div className="review-actions"><Button kind="danger" disabled={pending} onClick={() => decide('rejected')}><Icon name="close" size={17} /> Rejeitar</Button><Button kind="gold" disabled={pending} onClick={() => decide('approved')}><Icon name="check" size={17} /> Aprovar artista</Button></div></> : <div className="review-complete"><span><Icon name="check" size={32} /></span><h2>Curadoria em dia</h2><p>Todos os cadastros foram analisados.</p></div>}</section>
       </div>}
-      {tab === 'artists' && <section className="admin-panel"><div className="panel-heading"><div><h2>Artistas ativos</h2><p>{artists.length} perfis disponíveis na plataforma</p></div><label className="admin-search"><span>Buscar</span><input placeholder="Nome ou técnica" /></label></div><div className="artist-admin-grid">{artists.map((artist) => <article key={artist.id}><span className="candidate-avatar large">{artist.name.charAt(0)}</span><div><h3>{artist.name}</h3><p>{artist.style}</p><small>{artist.location}</small></div><dl><div><dt>Obras</dt><dd>{artist.artworks}</dd></div><div><dt>Status</dt><dd className="status-active">Ativo</dd></div></dl><Button kind="outline">Ver perfil</Button></article>)}</div></section>}
+      {tab === 'artists' && <section className="admin-panel"><div className="panel-heading"><div><h2>Artistas ativos</h2><p>{artists ? `${artists.length} ${artists.length === 1 ? 'perfil aprovado' : 'perfis aprovados'} na plataforma` : 'Carregando…'}</p></div><label className="admin-search"><span>Buscar</span><input placeholder="Nome ou técnica" value={artistSearch} onChange={(event) => setArtistSearch(event.target.value)} /></label></div>
+        {artists === null ? <p className="empty-note">{dataFailed ? 'Não foi possível carregar os artistas. Tente de novo em instantes.' : 'Carregando artistas…'}</p> : (() => {
+          const term = artistSearch.trim().toLowerCase()
+          const shown = artists.filter((artist) => !term || `${artist.name} ${artist.artStyle}`.toLowerCase().includes(term))
+          if (!shown.length) return <p className="empty-note">{artists.length ? 'Nenhum artista encontrado para essa busca.' : 'Ainda não há artistas aprovados.'}</p>
+          return <div className="artist-admin-grid">{shown.map((artist) => <article key={artist.id}><span className="candidate-avatar large">{artist.name.charAt(0)}</span><div><h3>{artist.name}</h3><p>{artist.artStyle}</p><small>{artist.city}{artist.state ? ` · ${artist.state}` : ''}</small></div><dl><div><dt>Obras</dt><dd>{artworks.filter((art) => art.artistId === artist.id).length}</dd></div><div><dt>Status</dt><dd className="status-active">Ativo</dd></div></dl><Button kind="outline" onClick={() => setOpenProfile(openProfile === artist.id ? null : artist.id)}>{openProfile === artist.id ? 'Fechar perfil' : 'Ver perfil'}</Button>{openProfile === artist.id && <div className="artist-profile"><p><strong>E-mail</strong> {artist.email}</p><p><strong>Cadastro</strong> {new Date(artist.createdAt).toLocaleDateString('pt-BR')}</p><p>{artist.artistBio || 'Este artista ainda não escreveu uma biografia.'}</p></div>}</article>)}</div>
+        })()}</section>}
       {tab === 'artworks' && <section className="admin-panel"><div className="panel-heading"><div><h2>Catálogo de obras</h2><p>{artworks.length} obras cadastradas</p></div><Button kind="outline" onClick={exportArtworks}>Exportar lista</Button></div>{artworkNotice && <p className={`orders-notice ${artworkNotice.error ? 'is-error' : 'is-ok'}`} role="status">{artworkNotice.text}</p>}<div className="artwork-admin-table"><div className="table-head"><span>Obra</span><span>Artista</span><span>Técnica</span><span>Valor</span><span>Status</span><span>Ação</span></div>{artworks.map((artwork) => <article key={artwork.id}><div className="admin-artwork-title"><div>{artwork.image && <Image src={artwork.image} alt="" fill sizes="54px" />}</div><strong>{artwork.title}</strong></div><span>{artwork.artistName}</span><span>{artwork.technique}</span><strong>{currency(artwork.price)}</strong><em>{artworkStatusLabel[artwork.status] ?? artwork.status}</em>{artwork.status === 'published' || artwork.status === 'hidden' ? <Button kind="outline" disabled={artworkBusy === artwork.id} onClick={() => void toggleVisibility(artwork)}>{artwork.status === 'hidden' ? 'Republicar' : 'Despublicar'}</Button> : <span />}</article>)}</div></section>}
       {tab === 'orders' && <section className="admin-panel"><div className="panel-heading"><div><h2>Todos os pedidos</h2><p>{adminOrders ? `${adminOrders.length} pedidos registrados` : 'Carregando…'}</p></div></div>
         {dataFailed ? <DataError retry={() => void loadData()} /> : adminOrders && (adminOrders.length ? <div className="orders-list">{adminOrders.map((order) => <article className="order-card" key={order.id}>
@@ -1050,6 +1048,8 @@ function Checkout({ items, close, finish, viewOrders, placeOrder, defaultAddress
   const [processing, setProcessing] = useState(false)
   const [accepted, setAccepted] = useState(false)
   const [address, setAddress] = useState<Address>(() => ({ ...emptyAddress, ...defaultAddress }))
+  const [saved, setSaved] = useState<SavedAddress[]>([])
+  const [choice, setChoice] = useState<string>('new') // id do endereço salvo escolhido, ou 'new' para digitar outro
   const [card, setCard] = useState({ name: '', number: '', expiry: '', cvv: '' })
   const [orderNumber] = useState(() => `NG-${String(Date.now()).slice(-6)}`)
   const [placed, setPlaced] = useState<OrderView | null>(null)
@@ -1058,6 +1058,27 @@ function Checkout({ items, close, finish, viewOrders, placeOrder, defaultAddress
   const installmentCount = Number(installments)
   const paymentLabel = payment === 'pix' ? 'Pix' : payment === 'boleto' ? 'Boleto' : 'Cartão de crédito'
   const paymentDetail = payment === 'pix' ? 'Confirmação imediata' : payment === 'boleto' ? 'Aprovação em 1 a 2 dias úteis' : `${installments}x de ${currency(total / installmentCount)}`
+
+  useEffect(() => {
+    let alive = true
+    listAddresses().then((list) => {
+      if (!alive || !list.length) return
+      setSaved(list)
+      pickSaved(list[0]) // o primeiro endereço salvo já vem escolhido
+    }).catch(() => {}) // sem endereços salvos (ou prévia sem login), o formulário continua valendo
+    return () => { alive = false }
+  }, [])
+
+  function pickSaved(item: SavedAddress) {
+    const { id, ...fields } = item
+    setAddress({ ...emptyAddress, ...fields })
+    setChoice(id)
+  }
+
+  function pickNew() {
+    setAddress(emptyAddress)
+    setChoice('new')
+  }
 
   async function submitOrder() {
     setProcessing(true)
@@ -1083,7 +1104,7 @@ function Checkout({ items, close, finish, viewOrders, placeOrder, defaultAddress
   return <div className="checkout-overlay"><section className="checkout-shell">
     <header className="checkout-header"><Logo /><div className="checkout-steps">{['Entrega', 'Pagamento', 'Revisão'].map((label, index) => { const number = index + 1; return <div key={label} className={step === number ? 'active' : step > number ? 'complete' : ''}><span>{step > number ? <Icon name="check" size={14} /> : number}</span><p>{label}</p></div> })}</div><button type="button" className="checkout-close" onClick={close} aria-label="Fechar checkout"><Icon name="close" /></button></header>
     <div className="checkout-body"><main className="checkout-content">
-      {step === 1 && <form onSubmit={(event) => { event.preventDefault(); setStep(2) }}><div className="checkout-title"><p className="eyebrow">Etapa 01</p><h2>Onde sua obra será entregue?</h2><p>Preencha o endereço que será usado para calcular e acompanhar a entrega.</p></div><AddressFields value={address} onChange={setAddress} strict /><div className="checkout-actions"><Button kind="ghost" onClick={close}>Voltar ao carrinho</Button><Button type="submit" kind="gold">Continuar para pagamento <Icon name="arrow" size={16} /></Button></div></form>}
+      {step === 1 && <form onSubmit={(event) => { event.preventDefault(); setStep(2) }}><div className="checkout-title"><p className="eyebrow">Etapa 01</p><h2>Onde sua obra será entregue?</h2><p>Preencha o endereço que será usado para calcular e acompanhar a entrega.</p></div>{saved.length > 0 && <div className="payment-options saved-addresses" role="radiogroup" aria-label="Endereços salvos">{saved.map((item) => <button type="button" role="radio" aria-checked={choice === item.id} key={item.id} className={choice === item.id ? 'active' : ''} onClick={() => pickSaved(item)}><span className="payment-radio" /><div><strong>{item.street}, {item.number}{item.complement && ` · ${item.complement}`}</strong><small>{item.neighborhood} · {item.city}/{item.state} · CEP {item.cep}</small></div></button>)}<button type="button" role="radio" aria-checked={choice === 'new'} className={choice === 'new' ? 'active' : ''} onClick={pickNew}><span className="payment-radio" /><div><strong>Usar outro endereço</strong><small>Preencha os dados de entrega abaixo</small></div></button></div>}{(saved.length === 0 || choice === 'new') && <AddressFields value={address} onChange={setAddress} strict />}<div className="checkout-actions"><Button kind="ghost" onClick={close}>Voltar ao carrinho</Button><Button type="submit" kind="gold">Continuar para pagamento <Icon name="arrow" size={16} /></Button></div></form>}
       {step === 2 && <form onSubmit={(event) => { event.preventDefault(); setStep(3) }}><div className="checkout-title"><p className="eyebrow">Etapa 02</p><h2>Escolha como pagar</h2><p>Esta é uma simulação visual. Nenhuma cobrança ou dado financeiro será processado.</p></div><div className="payment-group"><h3>Recomendados</h3><div className="payment-options"><button type="button" className={payment === 'pix' ? 'active' : ''} onClick={() => setPayment('pix')}><span className="payment-radio" /><span className="payment-icon pix"><Icon name="pix" size={27} /></span><div><strong>Pix</strong><small>Aprovação imediata</small></div></button><button type="button" className={payment === 'boleto' ? 'active' : ''} onClick={() => setPayment('boleto')}><span className="payment-radio" /><span className="payment-icon"><Icon name="barcode" size={27} /></span><div><strong>Boleto</strong><small>Aprovação em 1 a 2 dias úteis</small></div></button></div></div><div className="payment-group"><h3>Cartões</h3><div className="payment-options"><button type="button" className={payment === 'credit' ? 'active' : ''} onClick={() => setPayment('credit')}><span className="payment-radio" /><span className="payment-icon"><Icon name="card" size={27} /></span><div><strong>Cartão de crédito</strong><small>Parcele sua compra em até 12 vezes</small></div></button></div></div>{payment === 'pix' ? <div className="payment-info-panel"><span className="payment-icon pix"><Icon name="pix" size={28} /></span><div><h3>Pagamento rápido e seguro</h3><p>O QR Code seria gerado após a confirmação. Para este projeto, a etapa é apenas demonstrativa.</p></div></div> : payment === 'boleto' ? <div className="payment-info-panel"><span className="payment-icon"><Icon name="barcode" size={28} /></span><div><h3>Boleto bancário</h3><p>O código de barras seria gerado ao finalizar. A confirmação pode levar de 1 a 2 dias úteis.</p></div></div> : <div className="card-fields"><label className="field span-two"><span>Nome impresso no cartão</span><input required value={card.name} onChange={(event) => updateCard('name', event.target.value)} placeholder="Nome completo" /></label><label className="field span-two"><span>Número do cartão</span><input required inputMode="numeric" value={card.number} onChange={(event) => updateCard('number', event.target.value)} placeholder="0000 0000 0000 0000" /></label><label className="field"><span>Validade</span><input required value={card.expiry} onChange={(event) => updateCard('expiry', event.target.value)} placeholder="MM/AA" /></label><label className="field"><span>CVV</span><input required inputMode="numeric" maxLength={4} value={card.cvv} onChange={(event) => updateCard('cvv', event.target.value)} placeholder="123" /></label><label className="field span-two"><span>Parcelamento</span><select value={installments} onChange={(event) => setInstallments(event.target.value)}>{Array.from({ length: 12 }).map((_, index) => { const count = index + 1; return <option key={count} value={count}>{count}x de {currency(total / count)}{count === 1 ? ' à vista' : ''}</option> })}</select></label></div>}<div className="checkout-actions"><Button kind="ghost" onClick={() => setStep(1)}>Voltar</Button><Button type="submit" kind="gold">Revisar pedido <Icon name="arrow" size={16} /></Button></div></form>}
       {step === 3 && <div><div className="checkout-title"><p className="eyebrow">Etapa 03</p><h2>Revise antes de finalizar</h2><p>Confira os dados da entrega e a forma de pagamento escolhida.</p></div><div className="review-block"><div><span>Endereço de entrega</span><button type="button" onClick={() => setStep(1)}>Editar</button></div><p><strong>{address.street}, {address.number}</strong>{address.complement && ` · ${address.complement}`}<br />{address.neighborhood} · {address.city}/{address.state}<br />CEP {address.cep}</p></div><div className="review-block"><div><span>Forma de pagamento</span><button type="button" onClick={() => setStep(2)}>Editar</button></div><p><strong>{paymentLabel}</strong><br />{paymentDetail}</p></div><label className="checkout-terms"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} /><span>Confirmo que revisei os dados e aceito os termos da compra demonstrativa.</span></label>{orderError && <p className="checkout-error" role="alert">{orderError}</p>}<div className="checkout-actions"><Button kind="ghost" onClick={() => setStep(2)}>Voltar</Button><Button kind="gold" disabled={processing || !accepted} onClick={submitOrder}>{processing ? 'Finalizando…' : 'Finalizar compra'} <Icon name="check" size={16} /></Button></div></div>}
     </main><aside className="checkout-summary"><p className="eyebrow">Resumo do pedido</p><h3>{items.length} {items.length === 1 ? 'obra selecionada' : 'obras selecionadas'}</h3><div className="summary-items">{items.map((item) => <article key={item.id}><div>{item.image && <Image src={item.image} alt={item.title} fill sizes="64px" />}</div><p><strong>{item.title}</strong><span>{item.artistName}</span><b>{currency(item.price)}</b></p></article>)}</div><dl><div><dt>Subtotal</dt><dd>{currency(total)}</dd></div><div><dt>Entrega</dt><dd>Grátis</dd></div>{step > 1 && <div><dt>Pagamento</dt><dd>{paymentLabel}</dd></div>}<div className="summary-total"><dt>Total</dt><dd>{currency(total)}</dd></div></dl><p className="secure-purchase"><Icon name="check" size={15} /> Ambiente de demonstração seguro</p></aside></div>

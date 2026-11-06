@@ -128,6 +128,12 @@ const apiForgotPassword = (email: string) => action('/auth/forgot-password', { m
 const apiResetPassword = (token: string, newPassword: string) => action('/auth/reset-password', { method: 'POST', ...json({ token, newPassword }) })
 const apiListFavorites = async () => readJson<string[]>(await call('/favorites'))
 const apiSetFavorite = (id: string, on: boolean) => action(`/favorites/${encodeURIComponent(id)}`, { method: on ? 'POST' : 'DELETE' })
+async function apiListApprovedArtists(): Promise<ArtistCandidate[]> {
+  const response = await call('/artists?status=approved')
+  if (response.status === 401 || response.status === 403) return [] // só o administrador vê esta lista
+  return readJson<ArtistCandidate[]>(response)
+}
+
 const apiListPublicArtists = async () => readJson<PublicArtist[]>(await call('/artists/public'))
 
 const apiShipOrder = (id: string, trackingCode: string) => action(`/orders/${encodeURIComponent(id)}/ship`, { method: 'POST', ...json({ trackingCode }) })
@@ -168,4 +174,5 @@ export const forgotPasswordAction: (email: string) => Promise<ActionResult> = US
 export const resetPasswordAction: (token: string, newPassword: string) => Promise<ActionResult> = USE_MOCK ? mock.resetPasswordAction : apiResetPassword
 export const listFavorites: () => Promise<string[]> = USE_MOCK ? mock.listFavorites : apiListFavorites
 export const setFavoriteAction: (id: string, on: boolean) => Promise<ActionResult> = USE_MOCK ? mock.setFavoriteAction : apiSetFavorite
+export const listApprovedArtists: () => Promise<ArtistCandidate[]> = USE_MOCK ? mock.listApprovedArtists : apiListApprovedArtists
 export const listPublicArtists: () => Promise<PublicArtist[]> = USE_MOCK ? mock.listPublicArtists : apiListPublicArtists
