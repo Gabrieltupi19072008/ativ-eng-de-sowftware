@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Image, Icon, Logo, Button, Field, Toast } from '../components/ui'
 
+// Acesso rápido (contas de teste) só em desenvolvimento. No site publicado fica escondido, a menos que VITE_DEMO_ACCESS=true.
+const SHOW_QUICK_ACCESS = import.meta.env.DEV || import.meta.env.VITE_DEMO_ACCESS === 'true'
+
 // Mede quanto da capa já foi rolada (0 a 1) e expõe como variável CSS --p.
 // O CSS usa --p para animar a capa, o fundo e a entrada do cartão de login.
 function useScrollProgress(ref: { current: HTMLElement | null }) {
@@ -57,7 +60,7 @@ export function Login({ submit, quickAccess, pending, error, createAccount, forg
           <h1>Acesse sua conta</h1>
           <p>Entre para comprar, vender suas obras ou acessar a administração.</p>
         </div>
-        <div className="quick-access reveal" style={step(3)}><span>Acesso rápido para visualizar</span><div><button type="button" disabled={pending} onClick={() => quickAccess('buyer')}>Comprador</button><button type="button" disabled={pending} onClick={() => quickAccess('artist')}>Artista / Vendedor</button><button type="button" disabled={pending} onClick={() => quickAccess('admin')}>Administrador</button></div></div>
+        {SHOW_QUICK_ACCESS && <div className="quick-access reveal" style={step(3)}><span>Acesso rápido para visualizar</span><div><button type="button" disabled={pending} onClick={() => quickAccess('buyer')}>Comprador</button><button type="button" disabled={pending} onClick={() => quickAccess('artist')}>Artista / Vendedor</button><button type="button" disabled={pending} onClick={() => quickAccess('admin')}>Administrador</button></div></div>}
         <form onSubmit={(event) => { event.preventDefault(); submit(new FormData(event.currentTarget)) }} className="login-form reveal" style={step(1)}>
           <Field label="E-mail" name="email" type="email" placeholder="seu@email.com" required />
           <Field label="Senha" name="password" type="password" placeholder="Sua senha" required />
