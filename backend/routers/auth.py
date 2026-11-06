@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 import config
 from database import get_db
 from deps import current_user
+from email_templates import password_reset_email
 from errors import ApiError
 from mailer import send_mail
 from models import Cliente, RedefinicaoSenha
@@ -81,11 +82,8 @@ def forgot_password(body: ForgotIn, request: Request, background: BackgroundTask
         db.add(RedefinicaoSenha(id_cliente=user.id_cliente, token_hash=_token_hash(token), data_expiracao=datetime.now() + timedelta(minutes=config.RESET_TOKEN_MINUTES)))
         db.commit()
         link = f"{config.FRONTEND_URL}/?reset={token}"
-        background.add_task(
-            send_mail, user.email, "Redefinição de senha — Nambá Galerie",
-            f"Olá, {user.nome.split()[0]}!\n\nRecebemos um pedido para redefinir a sua senha. Use o link abaixo (vale por {config.RESET_TOKEN_MINUTES} minutos):\n\n{link}\n\n"
-            "Se não foi você, ignore este e-mail: a sua senha continua a mesma.",
-        )
+        text, html = password_reset_email(user.nome, link, config.RESET_TOKEN_MINUTES)
+        background.add_task(send_mail, user.email, "Redefinição de senha — Nambá Galerie", text, html)
     # Mesma resposta exista a conta ou não: ninguém descobre quem tem cadastro.
     return {"ok": True, "message": "Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira também o spam."}
 

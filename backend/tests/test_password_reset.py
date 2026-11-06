@@ -20,7 +20,7 @@ def fresh_limiter():
 def outbox(monkeypatch):
     """Captura os e-mails em vez de enviar. O envio roda em segundo plano, mas o TestClient espera por ele."""
     sent: list[dict] = []
-    monkeypatch.setattr(auth, "send_mail", lambda to, subject, body: sent.append({"to": to, "subject": subject, "body": body}))
+    monkeypatch.setattr(auth, "send_mail", lambda to, subject, body, html=None: sent.append({"to": to, "subject": subject, "body": body, "html": html}))
     return sent
 
 
@@ -78,6 +78,29 @@ def test_forgot_password_is_rate_limited(client, outbox):
         assert client.post("/auth/forgot-password", json={"email": EMAIL}).status_code == 200
     assert client.post("/auth/forgot-password", json={"email": EMAIL}).status_code == 429
     assert len(outbox) == 5
+
+
+def test_reset_email_has_branded_html_with_the_link_and_a_text_fallback(client, outbox):
+    client.post("/auth/forgot-password", json={"email": EMAIL})
+    mail = outbox[0]
+    token = token_from(mail)
+    assert f"?reset={token}" in mail["html"] and "Criar nova senha" in mail["html"] and "#af7a3d" in mail["html"]
+    assert "60 minutos" in mail["html"] and "Se não foi você" in mail["body"]
+
+
+def test_email_template_escapes_html_in_the_name():
+    from email_templates import password_reset_email
+    _, html = password_reset_email('<script>x</script> Maria', "http://localhost:5173/?reset=abc", 60)
+    assert "<script>" not in html
+
+
+def test_brevo_sends_html_and_text_together(monkeypatch):
+    import json
+    sent = []
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", lambda request, timeout: sent.append(json.loads(request.data)) or type("R", (), {"close": lambda self: None})())
+    monkeypatch.setattr(mailer.config, "BREVO_API_KEY", "chave-falsa")
+    mailer.send_mail("a@example.com", "Assunto", "texto", "<p>html</p>")
+    assert sent[0]["htmlContent"] == "<p>html</p>" and sent[0]["textContent"] == "texto"
 
 
 def test_mailer_without_smtp_only_logs(caplog):

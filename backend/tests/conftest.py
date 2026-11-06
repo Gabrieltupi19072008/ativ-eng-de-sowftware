@@ -9,6 +9,8 @@ os.environ["JWT_SECRET"] = "segredo-de-teste-com-mais-de-32-caracteres!"
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="namba-uploads-")
 os.environ["CORS_ORIGINS"] = "http://localhost:5173"
 os.environ["ENVIRONMENT"] = "development"
+for name in ("BREVO_API_KEY", "BREVO_SENDER_EMAIL", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"):
+    os.environ[name] = ""  # o .env do dono tem chaves reais: os testes nunca podem enviar e-mail de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
