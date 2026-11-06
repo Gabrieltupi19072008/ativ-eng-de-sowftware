@@ -18,7 +18,8 @@ Login e sessão, cadastro (comprador e artista com portfólio), vitrine de obras
      docker exec -i postgres-namba psql -U postgres -d loja_quadros -v ON_ERROR_STOP=1 < sql/postgres/01_schema.sql
      ```
      (Usamos a porta 5433 para não esbarrar num PostgreSQL que você já tenha na 5432.) Nas próximas vezes: `colima start` e `docker start postgres-namba`.
-   - **Ou use o Supabase** (banco na internet, plano grátis): crie um projeto, abra o *SQL Editor*, cole o conteúdo de `sql/postgres/01_schema.sql` e execute.
+   - **Ou use o Supabase** (banco na internet, plano grátis): crie um projeto, abra o *SQL Editor* e execute `sql/postgres/01_schema.sql` e depois `sql/postgres/02_supabase.sql`
+     (o `02` liga o bloqueio por linha, **essencial**: sem ele a API pública do Supabase deixa ler as tabelas, inclusive senhas, e cria a pasta de imagens `obras`).
      Na `DATABASE_URL` use a *Connection string* do painel na opção **Session pooler** (funciona em IPv4).
 2. **Variáveis**: `cp .env.example .env` e preencha `DATABASE_URL` e `JWT_SECRET`
    (gere com `python -c "import secrets; print(secrets.token_urlsafe(48))"`). O `.env` nunca vai para o GitHub.
