@@ -5,6 +5,7 @@
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # checa tipos e gera /dist
+npm test         # testes automáticos (rodam no modo simulado, sem back-end)
 ```
 Requer Node 20+.
 
@@ -31,6 +32,10 @@ No modo simulado elas já existem. Com a API, são criadas pelo `python seed.py`
 
 Servem só para desenvolvimento; os botões de acesso rápido do login usam estas contas.
 No cadastro, o CPF é validado de verdade pelo back-end (exemplo válido para testar: `529.982.247-25`).
+
+## Testes automáticos
+
+Ficam em `src/test/`. Abrem o app inteiro num navegador simulado (jsdom) com a API simulada (`src/mock.ts`) e fazem o que a pessoa faria: entrar, pedir recuperação de senha, trocar a senha pelo link. O CI do GitHub (`.github/workflows/ci.yml`) roda estes testes, o `pytest` do back-end e o build a cada push na `main`.
 
 ## Estrutura
 - `src/GalerieApp.tsx` — telas (login, cadastro, loja, conta, painel ADM, carrinho, checkout)
