@@ -1,36 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App'
+import { abrirApp, entrar, entrarComSucesso } from './helpers'
 
 // Testes de ponta a ponta no navegador simulado (jsdom), usando a API simulada (src/mock.ts).
 // Servem de rede de proteção: se uma tela parar de abrir ou um fluxo quebrar, o CI avisa antes de chegar na main.
-
-async function abrirApp() {
-  render(<App />)
-  await screen.findByPlaceholderText('seu@email.com') // tela de login carregou
-}
-
-// Depois de um login certo o site recarrega a página (window.location.reload) e lê a sessão guardada.
-// O jsdom não recarrega página, então interceptamos o recarregamento e abrimos o app de novo, como o navegador faria.
-async function entrarComSucesso(email: string, senha: string) {
-  const original = window.location
-  const reload = vi.fn()
-  vi.stubGlobal('location', { ...original, reload })
-  await entrar(email, senha)
-  await waitFor(() => expect(reload).toHaveBeenCalled())
-  vi.stubGlobal('location', original)
-  cleanup()
-  render(<App />)
-}
-
-async function entrar(email: string, senha: string) {
-  const user = userEvent.setup()
-  await user.type(screen.getByPlaceholderText('seu@email.com'), email)
-  await user.type(screen.getByPlaceholderText('Sua senha'), senha)
-  await user.click(screen.getByRole('button', { name: /^entrar/i }))
-  return user
-}
 
 describe('login', () => {
   it('recusa senha errada com uma mensagem clara', async () => {

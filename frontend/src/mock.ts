@@ -1,7 +1,7 @@
 // Modo simulado: tudo no navegador (localStorage), sem back-end.
 // Ligado com VITE_USE_MOCK=true. Tem as mesmas funções de api.ts, que escolhe qual usar.
 import { seedArtworks, seedCandidates } from './data/seed'
-import type { AdminOrderView, Address, PublicArtist, SavedAddress, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, PublicArtist, SavedAddress, ArtistCandidate, ArtworkView, OrderStatus, OrderView, ReportsView, SaleView, UserView } from './types'
 
 import type { ActionResult, ArtworkInput, OrderInput, ProfileInput } from './api'
 import { DEMO_ACCOUNTS } from './demoAccounts'

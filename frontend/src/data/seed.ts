@@ -1,4 +1,4 @@
-import type { ArtistCandidate, ArtworkView } from '../GalerieApp'
+import type { ArtistCandidate, ArtworkView } from '../types'
 
 export const seedArtworks: ArtworkView[] = [
   { id: 'f1', title: 'Entardecer no Cerrado', artistId: 'u-artist', artistName: 'Mariana Luz', technique: 'Acrílica', description: 'Camadas quentes inspiradas no horizonte do cerrado.', price: 1200, year: 2025, width: 60, height: 80, image: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&w=900&q=85', status: 'published' },

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import GalerieApp, { type ArtistCandidate, type ArtworkView, type UserView } from './GalerieApp'
+import GalerieApp from './GalerieApp'
+import type { ArtistCandidate, ArtworkView, UserView } from './types'
 import { currentUser, listArtworks, listCandidates } from './api'
 
 type State = { user: UserView | null; artworks: ArtworkView[]; candidates: ArtistCandidate[] }

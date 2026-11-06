@@ -38,7 +38,11 @@ No cadastro, o CPF é validado de verdade pelo back-end (exemplo válido para te
 Ficam em `src/test/`. Abrem o app inteiro num navegador simulado (jsdom) com a API simulada (`src/mock.ts`) e fazem o que a pessoa faria: entrar, pedir recuperação de senha, trocar a senha pelo link. O CI do GitHub (`.github/workflows/ci.yml`) roda estes testes, o `pytest` do back-end e o build a cada push na `main`.
 
 ## Estrutura
-- `src/GalerieApp.tsx` — telas (login, cadastro, loja, conta, painel ADM, carrinho, checkout)
+- `src/GalerieApp.tsx` — o "maestro": guarda o estado (usuário, carrinho, tema) e escolhe qual tela mostrar
+- `src/screens/` — uma tela por arquivo: `Login`, `Register`, `Password` (esqueci/nova senha), `Shop` (cabeçalho, vitrine e detalhe da obra), `Browse` (Artistas e Coleções), `Checkout` (carrinho e compra), `AddArtwork`, `Admin` (painel ADM) e `Account`
+- `src/screens/account/` — as abas da conta: pedidos, minhas obras, dados pessoais, endereços, segurança e vendas
+- `src/components/` — peças usadas em várias telas: `ui.tsx` (botão, ícones, logo), `AddressFields.tsx` (endereço com CEP automático) e `labels.ts` (textos de status)
+- `src/types.ts` — os tipos de dados (pedido, obra, usuário, endereço…)
 - `src/styles.css` — estilos (inclui a animação de rolagem da capa → login)
 - `src/api.ts` — **único ponto de contato com os dados** (fala com a API em Python; escolhe o modo simulado se `VITE_USE_MOCK=true`)
 - `src/mock.ts` — versão simulada no navegador (localStorage)

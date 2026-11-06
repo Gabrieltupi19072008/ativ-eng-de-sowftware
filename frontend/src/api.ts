@@ -2,7 +2,7 @@
 //
 // Por padrão fala com a API em Python (VITE_API_URL, padrão http://localhost:8000).
 // Com VITE_USE_MOCK=true usa a versão simulada no navegador (src/mock.ts), útil sem back-end.
-import type { AdminOrderView, Address, PublicArtist, SavedAddress, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './GalerieApp'
+import type { AdminOrderView, Address, PublicArtist, SavedAddress, ArtistCandidate, ArtworkView, OrderView, PaymentMethod, ReportsView, SaleView, UserView } from './types'
 import { DEMO_ACCOUNTS } from './demoAccounts'
 import * as mock from './mock'
 
