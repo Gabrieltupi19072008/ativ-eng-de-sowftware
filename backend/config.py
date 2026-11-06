@@ -19,6 +19,11 @@ CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5
 API_PUBLIC_URL = os.getenv("API_PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", BASE_DIR / "uploads"))
+# Armazenamento das imagens no Supabase (obrigatório em hospedagem grátis: o disco do servidor é apagado a cada reinício).
+# Sem estas duas variáveis, as imagens ficam em UPLOAD_DIR (desenvolvimento). A chave é SECRETA: só no .env e no painel da hospedagem.
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "obras").strip()
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_MB", "10")) * 1024 * 1024
 
 # Sessão (cookie HttpOnly com JWT)

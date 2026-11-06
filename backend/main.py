@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -12,11 +13,15 @@ from database import engine
 from errors import ApiError
 from routers import account, artists, artworks, auth, favorites, orders, sales, users
 
+log = logging.getLogger("uvicorn.error")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config.jwt_secret()  # falha já na inicialização se o segredo não estiver configurado
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    if config.ENVIRONMENT.lower() != "development" and not (config.SUPABASE_URL and config.SUPABASE_SERVICE_KEY):
+        log.warning("SUPABASE_URL/SUPABASE_SERVICE_KEY não definidos: as imagens ficam no disco do servidor e SOMEM a cada reinício.")
     yield
 
 
