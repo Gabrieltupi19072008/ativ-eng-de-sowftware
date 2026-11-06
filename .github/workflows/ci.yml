@@ -22,8 +22,6 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
-      # O pyodbc (driver do SQL Server) precisa desta biblioteca para instalar. Os testes usam SQLite e não tocam em SQL Server.
-      - run: sudo apt-get update && sudo apt-get install -y unixodbc-dev
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
 

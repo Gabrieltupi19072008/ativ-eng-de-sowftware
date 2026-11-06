@@ -129,7 +129,7 @@ def reports(_admin: Cliente = Depends(require_admin), db: Session = Depends(get_
     status_counts = dict(db.execute(select(Pedido.status, func.count()).group_by(Pedido.status)).all())
 
     # Catálogo: publicadas com estoque = à venda; publicadas sem estoque = vendidas ou reservadas
-    # Subconsulta: o SQL Server não aceita comparação solta no SELECT nem a mesma expressão com parâmetros no GROUP BY
+    # Subconsulta: escrito assim por compatibilidade (comparação solta no SELECT e expressão repetida no GROUP BY dão erro em alguns bancos)
     per_product = (
         select(Produto.status.label("status"), case((func.coalesce(Estoque.quantidade, 0) > 0, 1), else_=0).label("in_stock"))
         .outerjoin(Estoque, Estoque.id_produto == Produto.id_produto)

@@ -1,9 +1,9 @@
-"""Teste de ponta a ponta contra a API e o banco REAIS (SQL Server).
+"""Teste de ponta a ponta contra a API e o banco REAIS (PostgreSQL).
 
-Diferente do pytest (que usa SQLite), este roteiro passa por HTTP, pelo SQL Server e pelos scripts da pasta sql/.
-Pré-requisitos: banco criado (sql/00, 01, 02), seed.py executado e a API no ar em http://localhost:8000.
+Diferente do pytest (que usa SQLite), este roteiro passa por HTTP, pelo PostgreSQL e pelo script sql/postgres/01_schema.sql.
+Pré-requisitos: esquema aplicado (sql/postgres/01_schema.sql), seed.py executado e a API no ar em http://localhost:8000.
 
-    python scripts/smoke_sqlserver.py
+    python scripts/smoke_postgres.py
 
 Cria contas e obras com e-mail @example.com e APAGA tudo isso no final (as contas do seed não são tocadas).
 """
@@ -232,7 +232,7 @@ def main():
     # 6) logout encerra a sessão
     buyer.post("/auth/logout")
     check("logout", buyer.get("/me").status_code == 401)
-    print(f"\n{len(passed)} verificações passaram contra o SQL Server")
+    print(f"\n{len(passed)} verificações passaram contra o PostgreSQL")
 
 
 

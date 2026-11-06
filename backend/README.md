@@ -1,4 +1,4 @@
-# Back-end — API Loja de Quadros (FastAPI + SQL Server)
+# Back-end — API Loja de Quadros (FastAPI + PostgreSQL)
 
 ## O que já está pronto
 Login e sessão, cadastro (comprador e artista com portfólio), vitrine de obras, cadastro de obras, aprovação de artistas pela curadoria,
@@ -7,28 +7,23 @@ Login e sessão, cadastro (comprador e artista com portfólio), vitrine de obras
 
 ## Rodar pela primeira vez
 
-1. **Banco de dados** (SQL Server). Execute, nesta ordem, os scripts da pasta `sql/`:
-   `00_criar_banco.sql` → `01_schema.sql` → `02_ajustes_front.sql` → `03_pedidos.sql` → `04_conta.sql` → `05_senha_favoritos.sql`
-   (o `02` e o `03` podem ser rodados de novo sem problema). Pelo terminal:
-   ```bash
-   cd sql
-   for f in 00_criar_banco 01_schema 02_ajustes_front 03_pedidos 04_conta 05_senha_favoritos; do sqlcmd -I -S localhost,1433 -U sa -P 'SUA_SENHA' -C -b -i $f.sql; done
-   ```
-   O `-I` é importante: sem ele o `sqlcmd` falha ao mexer na tabela `cliente` (o índice único do CPF exige `QUOTED_IDENTIFIER` ligado). A API não tem esse problema.
-   - **No Mac não existe SQL Server nativo.** Rode num contêiner. Sem precisar de senha de administrador:
+1. **Banco de dados** (PostgreSQL). Um único script cria tudo: `sql/postgres/01_schema.sql` (pode ser rodado mais de uma vez).
+   Os scripts antigos do SQL Server (`sql/00` a `sql/05`) ficam na pasta só como histórico.
+   - **Mais simples para desenvolver: contêiner Docker** (no Mac use o Colima, sem precisar de senha de administrador):
      ```bash
      brew install colima docker
-     colima start --vm-type vz --vz-rosetta --cpu 2 --memory 4 --disk 20      # Apple Silicon
-     docker run --platform linux/amd64 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='SUA_SENHA' -p 1433:1433 \
-       --name sqlserver --restart unless-stopped -v sqlserver-data:/var/opt/mssql -d mcr.microsoft.com/mssql/server:2022-latest
+     colima start --vm-type vz --cpu 2 --memory 4 --disk 20      # Apple Silicon
+     docker run -d --name postgres-namba -e POSTGRES_PASSWORD='SUA_SENHA' -e POSTGRES_DB=loja_quadros -e TZ=America/Sao_Paulo \
+       -p 127.0.0.1:5433:5432 -v postgres-namba-data:/var/lib/postgresql/data postgres:16
+     docker exec -i postgres-namba psql -U postgres -d loja_quadros -v ON_ERROR_STOP=1 < sql/postgres/01_schema.sql
      ```
-     (A senha precisa de 8+ caracteres com maiúscula, minúscula, número e símbolo.) Nas próximas vezes: `colima start` e `docker start sqlserver`.
-     Alternativa: Docker Desktop, que pede a senha do Mac na instalação.
-2. **Driver ODBC**: instale o *ODBC Driver 18 for SQL Server* (o `pyodbc` precisa dele).
-   No Mac: `brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release`, depois `brew trust --formula microsoft/mssql-release/msodbcsql18 microsoft/mssql-release/mssql-tools18` e `HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18 mssql-tools18`.
-   Se aparecer `OpenSSL library could not be loaded`: o driver procura o OpenSSL em `/opt/homebrew/opt/openssl`, que no Homebrew novo aponta para a versão 4. Aponte para a 3: `ln -sfn ../Cellar/openssl@3/$(brew list --versions openssl@3 | cut -d' ' -f2) /opt/homebrew/opt/openssl`.
-3. **Variáveis**: `cp .env.example .env` e preencha `DB_*` e `JWT_SECRET`
+     (Usamos a porta 5433 para não esbarrar num PostgreSQL que você já tenha na 5432.) Nas próximas vezes: `colima start` e `docker start postgres-namba`.
+   - **Ou use o Supabase** (banco na internet, plano grátis): crie um projeto, abra o *SQL Editor*, cole o conteúdo de `sql/postgres/01_schema.sql` e execute.
+     Na `DATABASE_URL` use a *Connection string* do painel na opção **Session pooler** (funciona em IPv4).
+2. **Variáveis**: `cp .env.example .env` e preencha `DATABASE_URL` e `JWT_SECRET`
    (gere com `python -c "import secrets; print(secrets.token_urlsafe(48))"`). O `.env` nunca vai para o GitHub.
+   Defina também `TZ=America/Sao_Paulo`: as datas do pedido usam o horário de Brasília.
+3. **Atenção:** o PostgreSQL diferencia maiúsculas de minúsculas em textos (o SQL Server não). A API grava e-mails em minúsculas, e o esquema tem um índice que impede e-mails repetidos mesmo com letras diferentes.
 4. **Dependências**:
    ```bash
    python -m venv .venv
@@ -105,14 +100,14 @@ Para produção, o ideal é guardá-las em um serviço de arquivos (S3 etc.).
 ## Testes
 ```bash
 pip install -r requirements-dev.txt
-pytest                                  # rápido, usa SQLite temporário e não toca no SQL Server
-python scripts/smoke_sqlserver.py       # ponta a ponta contra a API + SQL Server reais (API no ar e seed rodado)
+pytest                                  # rápido, usa SQLite temporário e não toca no PostgreSQL
+python scripts/smoke_postgres.py        # ponta a ponta contra a API + PostgreSQL reais (API no ar e seed rodado)
 ```
-O `smoke_sqlserver.py` cadastra comprador e artista, aprova, publica obra, faz pedidos, cancela, paga e vence pedidos, e roda **5 corridas de duas pessoas comprando a mesma obra ao mesmo tempo** (só uma pode vencer). Ao final **apaga** o que criou (contas `@example.com`).
+O `smoke_postgres.py` cadastra comprador e artista, aprova, publica obra, faz pedidos, cancela, paga e vence pedidos, e roda **5 corridas de duas pessoas comprando a mesma obra ao mesmo tempo** (só uma pode vencer). Ao final **apaga** o que criou (contas `@example.com`).
 
 ## Limitações conhecidas
 - O bloqueio de tentativas fica na memória do processo: com vários servidores ou reinício, ele zera.
-- O `pytest` roda em SQLite. O SQL Server foi validado com o `smoke_sqlserver.py` (SQL Server 2022 em Docker no Apple Silicon): scripts `sql/`, `seed.py` e todas as rotas atuais funcionaram.
+- O `pytest` roda em SQLite. O PostgreSQL 16 foi validado com o `smoke_postgres.py` (contêiner Docker no Apple Silicon): o esquema `sql/postgres/01_schema.sql`, o `seed.py` e todas as rotas atuais funcionaram (63 verificações).
 - Para o front em outro domínio (produção), use `COOKIE_SECURE=true` e `COOKIE_SAMESITE=none` e HTTPS.
 
 ## E-mail (recuperação de senha)
