@@ -25,7 +25,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="API Loja de Quadros", lifespan=lifespan)
+_DEV = config.ENVIRONMENT.lower() == "development"
+# A documentação interativa (/docs) só existe em desenvolvimento: fora dele, não expõe a lista de rotas.
+app = FastAPI(
+    title="API Loja de Quadros",
+    lifespan=lifespan,
+    docs_url="/docs" if _DEV else None,
+    redoc_url="/redoc" if _DEV else None,
+    openapi_url="/openapi.json" if _DEV else None,
+)
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 

@@ -177,3 +177,23 @@ def test_cors_allows_front_end_with_credentials(client):
 def test_health(client):
     assert client.get("/health").json() == {"status": "ok"}
     assert client.head("/health").status_code == 200
+
+
+def test_docs_only_in_development(client, monkeypatch):
+    import importlib
+
+    import main
+
+    assert client.get("/docs").status_code == 200  # os testes rodam com ENVIRONMENT=development
+    monkeypatch.setattr("config.ENVIRONMENT", "production")
+    try:
+        prod = importlib.reload(main)
+        from fastapi.testclient import TestClient
+
+        other = TestClient(prod.app)
+        assert other.get("/docs").status_code == 404
+        assert other.get("/openapi.json").status_code == 404
+        assert other.get("/health").status_code == 200
+    finally:
+        monkeypatch.undo()
+        importlib.reload(main)
