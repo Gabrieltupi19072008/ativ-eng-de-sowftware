@@ -176,3 +176,4 @@ def test_cors_allows_front_end_with_credentials(client):
 
 def test_health(client):
     assert client.get("/health").json() == {"status": "ok"}
+    assert client.head("/health").status_code == 200

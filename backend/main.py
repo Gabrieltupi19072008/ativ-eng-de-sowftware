@@ -81,7 +81,7 @@ app.include_router(orders.router)
 app.include_router(sales.router)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])  # HEAD: alguns monitores (UptimeRobot) usam esse método
 def health():
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
