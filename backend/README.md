@@ -98,6 +98,16 @@ Para produção, o ideal é guardá-las em um serviço de arquivos (S3 etc.).
 - Imagens: só JPG/PNG/WEBP, conferidas pelo conteúdo do arquivo (não pela extensão), até 10 MB, nome aleatório.
 - Ninguém vira administrador nem artista aprovado pelo cadastro.
 
+## Criar o administrador (site publicado)
+No site publicado **não se roda o `seed.py`** (ele cria contas com senha conhecida). O administrador é criado com um script que pede a senha escondida no terminal:
+```bash
+# local (banco do .env):
+.venv/bin/python scripts/create_admin.py --email voce@gmail.com --name "Seu Nome"
+# no Supabase (informe o endereço do banco só neste comando, sem gravar no .env):
+DATABASE_URL='postgresql://...pooler.supabase.com:5432/postgres' .venv/bin/python scripts/create_admin.py --email voce@gmail.com --name "Seu Nome"
+```
+O script mostra em qual banco vai gravar e pede para digitar "sim". Senha: de 12 a 128 caracteres. Recusa e-mail que já existe.
+
 ## Testes
 ```bash
 pip install -r requirements-dev.txt

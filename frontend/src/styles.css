@@ -779,3 +779,5 @@ img { object-fit: cover; }
   .artist-admin-grid .btn { grid-column: 1 / -1; grid-row: auto; width: 100%; }
   .artist-admin-grid dl { grid-column: 1 / -1; }
 }
+
+.slow-note { max-width: 24rem; margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
