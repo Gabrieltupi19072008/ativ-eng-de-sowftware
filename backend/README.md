@@ -33,7 +33,7 @@ Login e sessão, cadastro (comprador e artista com portfólio), vitrine de obras
    ```
 5. **Dados de exemplo** (técnicas, contas de teste e obras da vitrine): `python seed.py`
 6. **Subir a API**: `uvicorn main:app --reload` → http://localhost:8000
-   A documentação interativa (testar as rotas pelo navegador) fica em http://localhost:8000/docs
+   A documentação interativa (testar as rotas pelo navegador) fica em http://localhost:8000/docs (só com `ENVIRONMENT=development`; fora dele ela é desligada)
 
 A API se recusa a subir sem `JWT_SECRET` (assim ninguém esquece de configurar o segredo).
 
