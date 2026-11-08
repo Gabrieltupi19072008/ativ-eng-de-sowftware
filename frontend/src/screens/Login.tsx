@@ -68,6 +68,7 @@ export function Login({ submit, quickAccess, pending, error, createAccount, forg
           <Button type="submit" kind="gold" disabled={pending} className="full">{pending ? 'Entrando…' : 'Entrar'} <Icon name="arrow" /></Button>
         </form>
         <div className="auth-links reveal" style={step(2)}><button type="button" onClick={createAccount}>Criar conta</button><span /><button type="button" onClick={forgot}>Esqueci minha senha</button></div>
+        <p className="demo-note">Versão de demonstração: nenhum pagamento é cobrado e nenhuma obra é enviada de verdade.</p>
       </div>
     </section>
     {notice && <Toast message={notice} onClose={() => setNotice(null)} />}

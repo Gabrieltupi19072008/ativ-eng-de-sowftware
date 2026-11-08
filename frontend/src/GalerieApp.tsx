@@ -11,6 +11,7 @@ import { Login } from './screens/Login'
 import { ForgotPassword, ResetPassword } from './screens/Password'
 import { Register, type RegisterRole } from './screens/Register'
 import { Header, Shop, ArtModal } from './screens/Shop'
+import { DemoBanner } from './components/Legal'
 
 type View = 'login' | 'register' | 'forgot' | 'reset' | 'shop' | 'artists' | 'collections' | 'add-art' | 'account' | 'admin'
 
@@ -171,6 +172,7 @@ export default function GalerieApp({ initialUser, initialArtworks, initialCandid
       <Admin candidates={initialCandidates} artworks={artworks} user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} back={() => navigate('shop')} review={(id, decision, note) => run(() => reviewArtistAction(id, decision, note))} reload={onRefresh} pending={isPending} logout={exitAccount} />
     ) : (
       <div className="app-shell">
+        <DemoBanner />
         <Header user={user} theme={theme} toggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')} cartCount={cart.length} onCart={() => setCartOpen(true)} onAccount={() => navigate('account')} onShop={() => { setActiveFilter('Todos'); setArtistFilter(null); navigate('shop') }} onArtists={() => navigate('artists')} onCollections={() => navigate('collections')} onAdd={() => navigate('add-art')} onAdmin={() => navigate('admin')} logout={exitAccount} />
         {view === 'shop' && <Shop user={user} artworks={filtered} total={artworks.length} filter={activeFilter} setFilter={setActiveFilter} favorite={favorites} toggleFavorite={toggleFavorite} artistFilter={artistFilter} clearArtist={() => setArtistFilter(null)} addCart={(art) => { setCart((items) => items.some((item) => item.id === art.id) ? items : [...items, art]); setMessage({ text: `${art.title} foi adicionada ao carrinho.` }) }} select={setSelectedArt} onAdd={() => navigate('add-art')} />}
         {view === 'artists' && <ArtistsPage openArtist={(artist) => { setArtistFilter({ id: artist.id, name: artist.name }); setActiveFilter('Todos'); navigate('shop') }} />}

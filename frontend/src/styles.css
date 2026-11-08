@@ -781,3 +781,17 @@ img { object-fit: cover; }
 }
 
 .slow-note { max-width: 24rem; margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+
+/* Faixa de demonstração e janelas de Termos/Privacidade */
+.demo-banner { background: #201f1c; color: #f7f5f0; text-align: center; font-size: .72rem; letter-spacing: .03em; padding: .5rem 1rem; line-height: 1.4; }
+.demo-banner strong { color: #e6c08a; font-weight: 600; }
+.legal-link { border: 0; background: none; padding: 0; color: var(--gold-dark); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.legal-modal { position: fixed; z-index: 60; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; background: var(--paper, #f7f5f0); color: var(--ink, #201f1c); padding: 2rem 2rem 1.5rem; box-shadow: 0 30px 80px rgb(0 0 0 / .35); }
+.legal-modal h2 { margin: .3rem 0 .2rem; }
+.legal-modal h3 { margin: 1.3rem 0 .3rem; font-size: .9rem; }
+.legal-modal p { margin: 0 0 .5rem; line-height: 1.65; font-size: .85rem; }
+.legal-modal a { color: var(--gold-dark); }
+.legal-date { color: var(--muted); font-size: .72rem !important; }
+.legal-close { position: absolute; top: .6rem; right: .8rem; border: 0; background: none; font-size: 1.8rem; line-height: 1; color: var(--muted); cursor: pointer; }
+.legal-ok { margin-top: 1.2rem; width: 100%; }
+@media (max-width: 600px) { .legal-modal { padding: 1.5rem 1.2rem 1.2rem; } }
