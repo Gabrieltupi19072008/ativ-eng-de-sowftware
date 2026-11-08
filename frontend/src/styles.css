@@ -795,3 +795,6 @@ img { object-fit: cover; }
 .legal-close { position: absolute; top: .6rem; right: .8rem; border: 0; background: none; font-size: 1.8rem; line-height: 1; color: var(--muted); cursor: pointer; }
 .legal-ok { margin-top: 1.2rem; width: 100%; }
 @media (max-width: 600px) { .legal-modal { padding: 1.5rem 1.2rem 1.2rem; } }
+
+/* Texto digitado pela pessoa (sem espaços, por exemplo) quebra de linha em vez de estourar a tela */
+.candidate-detail, .candidate-heading, .artist-admin-grid, .browse-body, .art-meta, .details-panel, .art-modal, .account-grid { overflow-wrap: anywhere; }
