@@ -22,7 +22,7 @@ TECHNIQUES = {
     "Aquarela": "Pintura em aquarela",
     "Acrílica": "Pintura em tinta acrílica",
     "Pastel": "Pastel seco ou oleoso",
-    "Arte Digital": "Criação e impressão digital",
+    "Arte Contemporânea": "Linguagens e suportes atuais",
     "Técnica Mista": "Combinação de técnicas",
 }
 
@@ -56,7 +56,7 @@ ARTWORKS = [
     ("Entardecer no Cerrado", "Mariana Luz", "Acrílica", "Camadas quentes inspiradas no horizonte do cerrado.", "1200", 2025, 60, 80, "1541961017774-22349e4a1262"),
     ("Azul em Movimento", "Carlos Neves", "Óleo", "Gestos livres em azul profundo e amarelo mineral.", "2800", 2024, 90, 120, "1552312097-8ef75595e2a2"),
     ("Jardim Suspenso", "Ana Beatriz", "Aquarela", "Estudo botânico de transparências e luz.", "950", 2026, 42, 59, "1618331835717-801e976710b2"),
-    ("Geometria Urbana", "Pedro Alves", "Arte Digital", "Arquitetura imaginada a partir de ritmos urbanos.", "1750", 2025, 70, 70, "1533208087231-c3618eab623c"),
+    ("Geometria Urbana", "Pedro Alves", "Arte Contemporânea", "Arquitetura imaginada a partir de ritmos urbanos.", "1750", 2025, 70, 70, "1533208087231-c3618eab623c"),
     ("Vermelho Essencial", "Lúcia Ferreira", "Pastel", "Cor e matéria em equilíbrio silencioso.", "3400", 2023, 80, 100, "1533157950006-c38844053d55"),
     ("Cartografia Afetiva", "Thiago Ramos", "Técnica Mista", "Memórias transformadas em paisagens abstratas.", "880", 2026, 50, 70, "1605721911519-3dfeb3be25e7"),
 ]

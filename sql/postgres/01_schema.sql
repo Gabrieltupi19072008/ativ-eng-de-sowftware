@@ -129,7 +129,7 @@ INSERT INTO categoria (nome, descricao) VALUES
 	('Aquarela', 'Pintura em aquarela'),
 	('Acrílica', 'Pintura em tinta acrílica'),
 	('Pastel', 'Pastel seco ou oleoso'),
-	('Arte Digital', 'Criação e impressão digital'),
+	('Arte Contemporânea', 'Linguagens e suportes atuais'),
 	('Técnica Mista', 'Combinação de técnicas')
 ON CONFLICT (nome) DO NOTHING;
 

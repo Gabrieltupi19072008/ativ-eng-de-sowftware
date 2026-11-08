@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { UserView, ArtworkView } from '../types'
 import { Image, Icon, Logo, Button, currency } from '../components/ui'
 
-export const filters = ['Todos', 'Óleo', 'Aquarela', 'Acrílica', 'Pastel', 'Arte Digital', 'Técnica Mista']
+export const filters = ['Todos', 'Óleo', 'Aquarela', 'Acrílica', 'Pastel', 'Arte Contemporânea', 'Técnica Mista']
 
 export function Header({ user, theme, toggleTheme, cartCount, onCart, onAccount, onShop, onArtists, onCollections, onAdd, onAdmin, logout }: { user: UserView; theme: 'light' | 'dark'; toggleTheme: () => void; cartCount: number; onCart: () => void; onAccount: () => void; onShop: () => void; onArtists: () => void; onCollections: () => void; onAdd: () => void; onAdmin: () => void; logout: () => void }) {
   const [menu, setMenu] = useState(false)

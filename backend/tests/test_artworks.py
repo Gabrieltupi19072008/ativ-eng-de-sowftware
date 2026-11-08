@@ -15,7 +15,7 @@ def test_public_list_shows_only_published_without_login(client):
     first = artworks[0]
     assert set(["id", "title", "artistName", "technique", "description", "price", "year", "width", "height", "image", "status"]) <= set(first)
     assert all(a["status"] == "published" for a in artworks)
-    assert {a["technique"] for a in artworks} == {"Acrílica", "Óleo", "Aquarela", "Arte Digital", "Pastel", "Técnica Mista"}
+    assert {a["technique"] for a in artworks} == {"Acrílica", "Óleo", "Aquarela", "Arte Contemporânea", "Pastel", "Técnica Mista"}
 
 
 def test_only_approved_artists_can_publish(client, as_):
