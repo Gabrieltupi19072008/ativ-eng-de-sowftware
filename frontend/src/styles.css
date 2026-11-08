@@ -798,3 +798,6 @@ img { object-fit: cover; }
 
 /* Texto digitado pela pessoa (sem espaços, por exemplo) quebra de linha em vez de estourar a tela */
 .candidate-detail, .candidate-heading, .artist-admin-grid, .browse-body, .art-meta, .details-panel, .art-modal, .account-grid { overflow-wrap: anywhere; }
+
+/* Fotos de obras aparecem inteiras (sem cortar as bordas do quadro) */
+.art-image img, .art-dropzone img, .thumb-row img, .modal-image img { object-fit: contain; }
