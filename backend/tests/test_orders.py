@@ -196,13 +196,15 @@ def test_fake_payment_is_off_when_disabled(client, as_, monkeypatch):
     assert client.post(f"/orders/{order['id']}/simulate-payment").status_code == 404
 
 
-def test_fake_payment_can_never_be_on_in_production(monkeypatch):
+def test_fake_payment_in_production_needs_explicit_opt_in(monkeypatch):
     import importlib
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("FAKE_PAYMENTS", "true")
-    reloaded = importlib.reload(config)
+    monkeypatch.delenv("FAKE_PAYMENTS", raising=False)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)  # ignora o .env da máquina
     try:
-        assert reloaded.FAKE_PAYMENTS is False
+        assert importlib.reload(config).FAKE_PAYMENTS is False  # sem a variável, produção nunca marca pedido como pago
+        monkeypatch.setenv("FAKE_PAYMENTS", "true")
+        assert importlib.reload(config).FAKE_PAYMENTS is True  # demonstração: ligado de propósito
     finally:
         monkeypatch.undo()
         importlib.reload(config)

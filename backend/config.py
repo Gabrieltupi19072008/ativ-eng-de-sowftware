@@ -38,8 +38,9 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 # Pedidos
 ORDER_EXPIRY_HOURS = int(os.getenv("ORDER_EXPIRY_HOURS", "24"))  # prazo para pagar; depois a obra volta à vitrine
 MAX_ORDER_ITEMS = 10
-# Pagamento SEM cobrança real, só para testar o fluxo. Ligado só em desenvolvimento e nunca em produção.
-FAKE_PAYMENTS = _bool("FAKE_PAYMENTS", ENVIRONMENT.lower() == "development") and ENVIRONMENT.lower() != "production"
+# Pagamento SEM cobrança real (demonstração). Ligado por padrão só em desenvolvimento; em produção só com FAKE_PAYMENTS=true
+# explícito. Ao integrar um gateway de verdade, remova a variável (ou use false): nenhum pedido deve ser marcado como pago sem cobrança.
+FAKE_PAYMENTS = _bool("FAKE_PAYMENTS", ENVIRONMENT.lower() == "development")
 
 
 # Recuperação de senha. Sem SMTP_HOST o e-mail não é enviado: em desenvolvimento o link aparece no terminal da API.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listAddresses, type ActionResult } from '../api'
+import { listAddresses, simulatePaymentAction, type ActionResult } from '../api'
 import { emptyAddress, type Address, type SavedAddress, type ArtworkView, type PaymentMethod, type OrderView } from '../types'
 import { AddressFields } from '../components/AddressFields'
 import { Image, Icon, Logo, Button, currency } from '../components/ui'
@@ -52,9 +52,14 @@ export function Checkout({ items, close, finish, viewOrders, placeOrder, default
     setProcessing(true)
     setOrderError('')
     const result = await placeOrder({ address, paymentMethod: payment })
+    let order = result.ok ? result.order ?? null : null
+    if (order?.canSimulatePayment) { // demonstração: nada é cobrado, o pedido já nasce pago
+      const paid = await simulatePaymentAction(order.id)
+      if (paid.ok && paid.order) order = paid.order
+    }
     setProcessing(false)
     if (result.ok) {
-      setPlaced(result.order ?? null)
+      setPlaced(order)
       setStep(4)
     } else {
       setOrderError(result.message)
@@ -66,7 +71,7 @@ export function Checkout({ items, close, finish, viewOrders, placeOrder, default
   }
 
   if (step === 4) {
-    return <div className="checkout-overlay"><section className="checkout-success"><div className="success-burst" aria-hidden="true">{Array.from({ length: 12 }).map((_, index) => <span key={index} />)}</div><div className="success-check"><Icon name="check" size={42} /></div><p className="eyebrow">Pedido registrado</p><h2>Sua nova obra já faz parte da sua história.</h2><p>Pedido <strong>{placed?.number ?? orderNumber}</strong> registrado e aguardando pagamento. As obras ficam reservadas para você até o prazo do pedido.</p><p className="success-note">Ambiente de demonstração: nada é cobrado. Em “Meus pedidos” você acompanha o pedido e pode simular o pagamento.</p><div className="success-details"><span>Pagamento</span><strong>{payment === 'credit' ? `${paymentLabel} · ${installments}x` : paymentLabel}</strong><span>Total</span><strong>{currency(total)}</strong></div><div className="success-actions">{viewOrders && <Button kind="gold" onClick={viewOrders}>Ver meus pedidos</Button>}<Button kind={viewOrders ? 'outline' : 'gold'} onClick={finish}>Voltar para a galeria</Button></div></section></div>
+    return <div className="checkout-overlay"><section className="checkout-success"><div className="success-burst" aria-hidden="true">{Array.from({ length: 12 }).map((_, index) => <span key={index} />)}</div><div className="success-check"><Icon name="check" size={42} /></div><p className="eyebrow">{placed?.status === 'paid' ? 'Pagamento confirmado' : 'Pedido registrado'}</p><h2>Sua nova obra já faz parte da sua história.</h2>{placed?.status === 'paid' ? <p>Pedido <strong>{placed.number}</strong> pago. Em “Meus pedidos” você acompanha o envio.</p> : <p>Pedido <strong>{placed?.number ?? orderNumber}</strong> registrado e aguardando pagamento. As obras ficam reservadas para você até o prazo do pedido.</p>}<p className="success-note">Ambiente de demonstração: nenhuma cobrança real foi feita e os dados do cartão não saem do seu navegador.</p><div className="success-details"><span>Pagamento</span><strong>{payment === 'credit' ? `${paymentLabel} · ${installments}x` : paymentLabel}</strong><span>Total</span><strong>{currency(total)}</strong></div><div className="success-actions">{viewOrders && <Button kind="gold" onClick={viewOrders}>Ver meus pedidos</Button>}<Button kind={viewOrders ? 'outline' : 'gold'} onClick={finish}>Voltar para a galeria</Button></div></section></div>
   }
 
   return <div className="checkout-overlay"><section className="checkout-shell">

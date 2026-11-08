@@ -64,7 +64,7 @@ Erros sempre vêm como `{ "ok": false, "message": "...", "field": "campo" }` (o 
 | `GET /orders` | logado | "Meus pedidos", do mais novo ao mais antigo |
 | `GET /orders/{id}` | dono do pedido ou admin | Um pedido (outra pessoa recebe 404) |
 | `POST /orders/{id}/cancel` | dono ou admin | Cancela pedido que ainda aguarda pagamento e devolve as obras à vitrine |
-| `POST /orders/{id}/simulate-payment` | dono ou admin | **Só em desenvolvimento** (`FAKE_PAYMENTS`): marca como pago sem cobrar. Será trocado pelo webhook do gateway |
+| `POST /orders/{id}/simulate-payment` | dono ou admin | **Só com `FAKE_PAYMENTS=true`** (padrão só em desenvolvimento; em produção precisa ser ligado de propósito, para demonstração): marca como pago sem cobrar. O checkout chama esta rota sozinho ao finalizar. Será trocado pelo webhook do gateway |
 | `POST /orders/{id}/ship` | artista (dono de todas as obras) ou admin | Pedido pago vira "enviado" com código de rastreio (JSON `{trackingCode, carrier?}`; código único) |
 | `POST /orders/{id}/deliver` | artista (dono de todas as obras) ou admin | Pedido enviado vira "entregue" |
 | `GET /sales` | artista ou admin | Obras vendidas/reservadas do artista (admin vê todas); o endereço só aparece depois do pagamento |
