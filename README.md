@@ -120,7 +120,7 @@ cd backend && pip install -r requirements-dev.txt && pytest
 cd frontend && npm test
 ```
 
-- **99 testes** no back-end e **29 testes** no front-end.
+- **100 testes** no back-end e **31 testes** no front-end.
 - `scripts/smoke_postgres.py` roda um teste ponta a ponta contra a API e o PostgreSQL reais, incluindo corridas de duas pessoas comprando a mesma obra.
 - O CI roda os testes e o build a cada push na `main`.
 
